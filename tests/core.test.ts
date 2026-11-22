@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { emptyFacts, type CustomerRecord } from '@sa/shared';
+import { parseEnvValue } from '../packages/shared/src/env';
 import { availableTools, overlay, refundDecision } from '../packages/tools/src';
 import { numericClaims, numbersIn } from '../packages/agent/src/guardrails';
 import { chunkDocument } from '../packages/rag/src/chunker';
@@ -100,6 +101,15 @@ describe('identifiers (exact-match confidence)', () => {
   it('normalises error codes', () => {
     expect(identifiers('what is error e4410, and E-2210?')).toEqual(['E-4410', 'E-2210']);
     expect(identifiers('How do refunds work?')).toEqual([]);
+  });
+});
+
+describe('parseEnvValue', () => {
+  it('strips inline comments from unquoted values only', () => {
+    expect(parseEnvValue('gpt-6.1-terra            # orchestrator')).toBe('gpt-6.1-terra');
+    expect(parseEnvValue('"value # not a comment"')).toBe('value # not a comment');
+    expect(parseEnvValue('pa#ss')).toBe('pa#ss');
+    expect(parseEnvValue('')).toBe('');
   });
 });
 

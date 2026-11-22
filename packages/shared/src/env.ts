@@ -16,6 +16,14 @@ export function findRepoRoot(start: string = process.cwd()): string {
 
 const ALIASES: Record<string, string> = { openai_key: 'OPENAI_API_KEY' };
 
+/** Quoted values are taken literally; unquoted values drop an inline " # comment" (dotenv/compose semantics). */
+export function parseEnvValue(raw: string): string {
+  const v = raw.trim();
+  const q = /^(['"])(.*)\1$/.exec(v);
+  if (q) return q[2]!;
+  return v.replace(/\s+#.*$/, '').trim();
+}
+
 export function loadEnv(): void {
   const root = findRepoRoot(process.cwd());
   for (const file of [join(root, '.env'), resolve(root, '..', '.env')]) {
@@ -24,7 +32,7 @@ export function loadEnv(): void {
       const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/.exec(line);
       if (!m) continue;
       const key = ALIASES[m[1]!] ?? m[1]!;
-      const value = m[2]!.replace(/^['"]|['"]$/g, '');
+      const value = parseEnvValue(m[2]!);
       if (process.env[key] === undefined) process.env[key] = value;
     }
   }
