@@ -336,7 +336,7 @@ export async function createTicket(raw: unknown, ctx: ToolContext): Promise<Tool
   return {
     status: 'ok',
     summary: `Ticket ${ticket.id} → ${queue} (${a.priority})`,
-    data: { ticket_id: ticket.id, queue, ...(enterprise && cust.account_manager ? { account_manager: cust.account_manager } : {}), expected_response: billing ? 'within 2 business days' : FIRST_RESPONSE[cust?.tier ?? 'unknown'] },
+    data: { ticket_id: ticket.id, queue, handled_by: 'a human specialist (not the AI)', ...(enterprise && cust.account_manager ? { account_manager: cust.account_manager } : {}), expected_response: billing ? 'within 2 business days' : FIRST_RESPONSE[cust?.tier ?? 'unknown'] },
   };
 }
 

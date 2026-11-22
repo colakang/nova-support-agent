@@ -1,0 +1,153 @@
+@import 'tailwindcss';
+
+/*
+ * Semantic tokens. Tailwind utilities reference these as CSS variables (bg-surface, text-muted, …),
+ * so redefining them under prefers-color-scheme flips the whole UI without `dark:` on every element.
+ */
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'Inter', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+
+  --color-canvas: #f6f6f7;
+  --color-surface: #ffffff;
+  --color-surface-2: #f1f1f3;
+  --color-surface-3: #e8e8ec;
+  --color-line: #e3e3e8;
+  --color-line-strong: #cfcfd6;
+  --color-fg: #17171c;
+  --color-fg-2: #3c3c45;
+  --color-muted: #6b6b76;
+  --color-faint: #9b9ba6;
+
+  --color-accent: #5b5bd6;
+  --color-accent-fg: #ffffff;
+  --color-accent-soft: #ededfc;
+  --color-accent-ink: #4040b0;
+
+  --color-ok: #16a34a;
+  --color-ok-soft: #e8f7ee;
+  --color-ok-ink: #166534;
+  --color-warn: #d97706;
+  --color-warn-soft: #fdf3e3;
+  --color-warn-ink: #92400e;
+  --color-bad: #dc2626;
+  --color-bad-soft: #fdecec;
+  --color-bad-ink: #991b1b;
+  --color-esc: #7c3aed;
+  --color-esc-soft: #f1eafe;
+  --color-esc-ink: #5b21b6;
+  --color-info: #0284c7;
+  --color-info-soft: #e6f3fb;
+  --color-info-ink: #075985;
+
+  /* waveform + span kinds */
+  --color-mic: #0ea5e9;
+  --color-nova: #8b5cf6;
+  --color-k-llm: #8b5cf6;
+  --color-k-tool: #0ea5e9;
+  --color-k-retrieval: #10b981;
+  --color-k-guardrail: #f59e0b;
+  --color-k-embed: #14b8a6;
+  --color-k-turn: #9ca3af;
+
+  --shadow-pop: 0 1px 2px rgb(0 0 0 / 0.04), 0 8px 24px -6px rgb(0 0 0 / 0.12);
+
+  --animate-fade-in: fade-in 160ms ease-out;
+  --animate-slide-up: slide-up 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-blink: blink 1s steps(2, start) infinite;
+
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(2px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes slide-up {
+    from { transform: translateY(100%); }
+    to { transform: none; }
+  }
+  @keyframes blink {
+    to { visibility: hidden; }
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-canvas: #0c0c0f;
+    --color-surface: #141418;
+    --color-surface-2: #1b1b21;
+    --color-surface-3: #24242b;
+    --color-line: #26262e;
+    --color-line-strong: #34343d;
+    --color-fg: #ececf1;
+    --color-fg-2: #c8c8d0;
+    --color-muted: #9898a4;
+    --color-faint: #6c6c78;
+
+    --color-accent: #7c7cf0;
+    --color-accent-fg: #0c0c0f;
+    --color-accent-soft: #1f1f3a;
+    --color-accent-ink: #a9a9ff;
+
+    --color-ok: #22c55e;
+    --color-ok-soft: #10261a;
+    --color-ok-ink: #86efac;
+    --color-warn: #f59e0b;
+    --color-warn-soft: #2a1f0b;
+    --color-warn-ink: #fcd34d;
+    --color-bad: #ef4444;
+    --color-bad-soft: #2c1313;
+    --color-bad-ink: #fca5a5;
+    --color-esc: #a78bfa;
+    --color-esc-soft: #221a36;
+    --color-esc-ink: #c4b5fd;
+    --color-info: #38bdf8;
+    --color-info-soft: #0f2230;
+    --color-info-ink: #7dd3fc;
+
+    --color-mic: #38bdf8;
+    --color-nova: #a78bfa;
+
+    --shadow-pop: 0 1px 2px rgb(0 0 0 / 0.3), 0 12px 32px -8px rgb(0 0 0 / 0.6);
+  }
+}
+
+/* Base styles live in the base layer so Tailwind utilities (e.g. focus:outline-none) can override them. */
+@layer base {
+  :root {
+    color-scheme: light dark;
+  }
+
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    background: var(--color-canvas);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Calm, consistent focus ring for keyboard users only. */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  /* Thin scrollbars in scroll panes. */
+  .scroll-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}

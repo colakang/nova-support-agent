@@ -148,7 +148,7 @@ Every turn records a span tree (`TurnRecorder`): each LLM call (model, tier, att
 - the agent judged a refund window itself instead of letting the billing tool decide;
 - Enterprise refund tickets went to the wrong queue.
 
-Other expectations were too strict and were relaxed after reading the answers; in each, the behaviour was correct but phrased differently. Building the error-code cases also exposed a retrieval bug:
+Other expectations were too strict and were relaxed after reading the answers; in each, the behaviour was correct but phrased differently. Substring expectations are brittle by nature ("end of your current *annual* term" vs "end of your current term"). The semantic check is the Batch API audit below, not the substrings. Building the error-code cases also exposed a retrieval bug:
 - Postgres tokenises `E-4410` as `e` + `-4410` (a negative number), so full-text never matched error codes;
 - short identifier queries embed poorly (cosine 0.46) even when the exact row is found.
 
