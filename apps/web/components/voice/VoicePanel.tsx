@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { Hand, MessageSquare, Mic, MicOff, Phone, PhoneOff, RotateCw, TriangleAlert } from 'lucide-react';
 import type { TurnActivity } from '@/lib/turnActivity';
-import type { CallState, VoiceCall } from '@/lib/voice/useVoiceCall';
+import type { CallState, ConnectStep, VoiceCall } from '@/lib/voice/useVoiceCall';
 import { fmtClock, fmtMs, fmtUsd } from '@/lib/format';
 import { Spinner, buttonClasses, cx } from '@/components/ui/primitives';
 import { StepTracker } from '@/components/chat/StepTracker';
@@ -17,6 +17,13 @@ const STATE_LABEL: Record<CallState, string> = {
   assistant_speaking: 'Nova is speaking',
   ended: 'Call ended',
   error: 'Call failed',
+};
+
+const CONNECT_STEP_LABEL: Record<ConnectStep, string> = {
+  token: 'Starting a secure voice session…',
+  mic: 'Waiting for microphone permission. Check your browser’s address bar.',
+  signaling: 'Contacting the voice service…',
+  audio: 'Opening the audio connection…',
 };
 
 function StateDot({ state }: { state: CallState }) {
@@ -67,6 +74,7 @@ export function VoicePanel({
             <div className="flex items-center gap-2" aria-live="polite">
               <StateDot state={state} />
               <span className="text-[15px] font-semibold text-fg">{STATE_LABEL[state]}</span>
+              {state === 'connecting' && call.connectStep ? <span className="text-[12px] text-muted">{CONNECT_STEP_LABEL[call.connectStep]}</span> : null}
               {muted ? <span className="rounded bg-warn-soft px-1.5 text-[11px] font-medium text-warn-ink">muted</span> : null}
             </div>
             <div className="ml-auto flex items-center gap-3 font-mono text-[11px] tabular-nums text-muted">

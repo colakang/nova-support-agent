@@ -16,6 +16,12 @@ import {
   type UsageCounters,
 } from './realtimeEvents';
 
+/** Where a call is while state === 'connecting' — shown in the UI so a stuck call says why. */
+export type ConnectStep = 'token' | 'mic' | 'signaling' | 'audio';
+
+/** From SDP exchange to an open data channel; past this the network is almost certainly blocking WebRTC. */
+const CONNECT_TIMEOUT_MS = 15_000;
+
 export type CallState = 'idle' | 'connecting' | 'listening' | 'user_speaking' | 'thinking' | 'assistant_speaking' | 'ended' | 'error';
 export type EndReason = 'hangup' | 'dropped' | 'timeout' | 'unmount';
 
@@ -80,6 +86,7 @@ interface CallCtx {
   tick: number | null;
   usageTimer: number | null;
   dropTimer: number | null;
+  connectTimer: number | null;
   /** Counters since the last /voice/usage post. */
   usage: UsageCounters;
   /** Whole-call counters for the live cost readout. */
@@ -160,7 +167,7 @@ function newCtx(sessionId: string): CallCtx {
   return {
     ended: false, sessionId, model: '', maxSeconds: 300,
     pc: null, dc: null, ms: null, audio: null, audioCtx: null,
-    connectedAt: null, tick: null, usageTimer: null, dropTimer: null,
+    connectedAt: null, tick: null, usageTimer: null, dropTimer: null, connectTimer: null,
     usage: zeroUsage(), total: zeroUsage(), latencies: [], speechSeconds: 0,
     speechStartedAt: null, lastSpeechStoppedAt: null, userSpeaking: false, awaiting: false, playingResponseId: null,
     assistant: new Map(), user: new Map(), consult: null, handledCalls: new Set(),
@@ -179,6 +186,7 @@ const localMessage = (role: 'user' | 'assistant', content: string, interrupted: 
 export function useVoiceCall(options: UseVoiceCallOptions) {
   const [state, setState] = useState<CallState>('idle');
   const [error, setError] = useState<CallError | null>(null);
+  const [connectStep, setConnectStep] = useState<ConnectStep | null>(null);
   const [muted, setMuted] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [maxSeconds, setMaxSeconds] = useState<number | null>(null);
@@ -322,8 +330,8 @@ export function useVoiceCall(options: UseVoiceCallOptions) {
 
   const teardown = useCallback((ctx: CallCtx) => {
     for (const t of [ctx.tick, ctx.usageTimer]) if (t !== null) window.clearInterval(t);
-    if (ctx.dropTimer !== null) window.clearTimeout(ctx.dropTimer);
-    ctx.tick = ctx.usageTimer = ctx.dropTimer = null;
+    for (const t of [ctx.dropTimer, ctx.connectTimer]) if (t !== null) window.clearTimeout(t);
+    ctx.tick = ctx.usageTimer = ctx.dropTimer = ctx.connectTimer = null;
     for (const l of ctx.assistant.values()) if (l.fallbackTimer !== null) window.clearTimeout(l.fallbackTimer);
     ctx.ms?.getTracks().forEach((t) => t.stop());
     try {
@@ -605,7 +613,12 @@ export function useVoiceCall(options: UseVoiceCallOptions) {
     ctx.audioCtx = audioCtx;
     ctx.audio = audio;
 
+    const step = (st: ConnectStep) => {
+      setConnectStep(st);
+      console.info(`[voice] ${st}`);
+    };
     try {
+      step('token');
       const tok = await api.voiceToken(sessionId);
       if (ctx.ended) return;
       ctx.model = tok.model;
@@ -613,6 +626,7 @@ export function useVoiceCall(options: UseVoiceCallOptions) {
       setMaxSeconds(tok.maxSessionSeconds);
 
       let ms: MediaStream;
+      step('mic'); // no timeout here: the user may take a while to click "Allow"
       try {
         ms = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
       } catch (err) {
@@ -653,6 +667,10 @@ export function useVoiceCall(options: UseVoiceCallOptions) {
       ctx.dc = dc;
       dc.onopen = () => {
         if (ctx.ended) return;
+        if (ctx.connectTimer !== null) window.clearTimeout(ctx.connectTimer);
+        ctx.connectTimer = null;
+        setConnectStep(null);
+        console.info('[voice] connected');
         ctx.connectedAt = performance.now();
         void audioCtx.resume().catch(() => {});
         setState('listening');
@@ -686,6 +704,19 @@ export function useVoiceCall(options: UseVoiceCallOptions) {
         }
       };
 
+      step('signaling');
+      ctx.connectTimer = window.setTimeout(() => {
+        if (ctx.ended || ctx.connectedAt !== null) return;
+        console.warn('[voice] connect timeout', { connection: pc.connectionState, ice: pc.iceConnectionState, dc: dc.readyState });
+        ctx.ended = true;
+        teardown(ctx);
+        setConnectStep(null);
+        setState('error');
+        setError({
+          kind: 'webrtc',
+          message: 'Couldn’t open the audio connection within 15 s. A VPN, firewall or browser extension (WebRTC / UDP blocking) is the usual cause; try another network or browser, or continue in chat.',
+        });
+      }, CONNECT_TIMEOUT_MS);
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       let r: Response;
@@ -702,9 +733,12 @@ export function useVoiceCall(options: UseVoiceCallOptions) {
       const sdp = await r.text();
       if (ctx.ended) return;
       await pc.setRemoteDescription({ type: 'answer', sdp });
+      step('audio');
     } catch (err) {
       if (ctx.ended) return;
+      console.warn('[voice] start failed', err);
       ctx.ended = true;
+      setConnectStep(null);
       teardown(ctx);
       setState('error');
       setError(toCallError(err));
@@ -741,6 +775,7 @@ export function useVoiceCall(options: UseVoiceCallOptions) {
 
   return {
     state,
+    connectStep,
     active,
     error,
     muted,
