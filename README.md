@@ -2,7 +2,7 @@
 
 A full-stack support agent for a fictional SaaS (Northstar, cloud storage & collaboration) that answers policy questions from a RAG knowledge base, verifies customers, issues refunds within policy, updates accounts and hands off to humans, over **streaming chat** and **live voice**, with an observability drawer that shows every prompt, tool call, guardrail decision, latency and cost.
 
-**Live demo:** https://nova.echo365.ai · **Walkthrough:** `<Loom link>`
+**Live demo:** https://nova.echo365.ai (password-protected; credentials are in the submission email) · **Walkthrough:** `<Loom link>`
 
 > Demo accounts (fake data) are listed in the app under **Demo accounts**. Try `maya@brightloop.io` / PIN `4821` and ask for a refund of your latest invoice, or `dev@quantafoods.com` / `7310` to see an over-limit refund go to a human.
 

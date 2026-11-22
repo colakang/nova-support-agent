@@ -35,4 +35,5 @@ Cloudflare (proxied DNS, TLS) → host nginx (origin cert) ─┬─ /        st
 - **Memory:** both containers have memory limits (db 256 MB, api 320 MB). Measured idle use is about 40 MB for the API and about 70 MB for Postgres.
 - **Ports:** containers bind to 127.0.0.1 only and run on their own bridge network.
 - **Streaming:** for SSE through nginx, the API sends `X-Accel-Buffering: no` and the site sets `proxy_buffering off`. Cloudflare passes `text/event-stream` through unbuffered.
+- **Access control (optional):** the nginx example includes commented `auth_basic` lines. The live demo uses them so that only reviewers with the password reach the app; `/api/health` stays open.
 - **Rate limiting:** client IPs come from `CF-Connecting-IP` (`TRUST_PROXY=1`). A production setup would also restrict the origin to Cloudflare IP ranges.
