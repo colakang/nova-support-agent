@@ -12,10 +12,17 @@ create table if not exists chunks (
   content        text not null,             -- breadcrumb + text (what gets embedded)
   token_count    int  not null,
   embedding      vector(1536) not null,
-  tsv            tsvector generated always as (to_tsvector('english', content)) stored,
   corpus_version text not null
 );
 create index if not exists chunks_embedding_idx on chunks using hnsw (embedding vector_cosine_ops);
+
+-- Full-text column. Postgres' parser reads "E-4410" as 'e' + '-4410' (a negative number), so an
+-- error-code search for 4410 would never match. Split letter-hyphen-digit before indexing.
+-- (Re-created on every migrate: it's derived data, 151 rows, milliseconds.)
+alter table chunks drop column if exists tsv;
+alter table chunks add column tsv tsvector generated always as (
+  to_tsvector('english', regexp_replace(content, '([A-Za-z])-([0-9])', '\1 \2', 'g'))
+) stored;
 create index if not exists chunks_tsv_idx on chunks using gin (tsv);
 
 create table if not exists sessions (

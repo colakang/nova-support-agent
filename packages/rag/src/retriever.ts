@@ -24,6 +24,10 @@ export interface RetrievedChunk {
   content: string;
   similarity: number;
   rrf: number;
+  /** Confidence used for gating: cosine similarity, raised to τ_high on an exact identifier match. */
+  score: number;
+  /** The chunk contains an identifier from the query verbatim (e.g. error code E-4410). */
+  exact: boolean;
 }
 
 export type ConfidenceBand = 'high' | 'medium' | 'low';
@@ -59,6 +63,11 @@ const STOP = new Set('a an and are as at be but by can could do does for from ha
 export function keywordQuery(q: string): string | null {
   const terms = [...new Set(q.toLowerCase().match(/[a-z0-9]+/g) ?? [])].filter((t) => t.length > 1 && !STOP.has(t));
   return terms.length ? terms.slice(0, 16).join(' | ') : null;
+}
+
+/** Identifiers where exact match beats semantic similarity: error codes, ids with digits (E-4410, SSO-2). */
+export function identifiers(q: string): string[] {
+  return [...new Set((q.match(/\b[A-Za-z]{1,4}-?\d{3,}\b/g) ?? []).map((m) => m.toUpperCase().replace(/^([A-Z]+)(\d)/, '$1-$2')))];
 }
 
 export const bandFor = (sim: number, t: Thresholds): ConfidenceBand => (sim >= t.high ? 'high' : sim >= t.low ? 'medium' : 'low');
@@ -108,19 +117,28 @@ export function pgRetriever(sql: Sql, embedder: Embedder, thresholds: Thresholds
         throw new RetrievalUnavailableError(`vector store query failed: ${(err as Error).message}`);
       }
       const t2 = performance.now();
-      const all: RetrievedChunk[] = rows.map((r) => ({
-        id: r.id, docId: r.doc_id, title: r.title, sectionPath: r.section_path, tiers: r.tiers,
-        kind: r.kind, content: r.content, similarity: Number(r.similarity), rrf: Number(r.rrf),
-      }));
+      // Short identifier queries ("error E-4410") embed poorly against a paragraph (cos ≈ 0.46) even
+      // when full-text finds the exact row. Similarity measures topic; for identifiers, an exact
+      // match is the signal — so it lifts confidence to τ_high and sorts first.
+      const ids = identifiers(query);
+      const all: RetrievedChunk[] = rows.map((r) => {
+        const similarity = Number(r.similarity);
+        const exact = ids.length > 0 && ids.some((id) => r.content.toUpperCase().includes(id));
+        return {
+          id: r.id, docId: r.doc_id, title: r.title, sectionPath: r.section_path, tiers: r.tiers,
+          kind: r.kind, content: r.content, similarity, rrf: Number(r.rrf), exact,
+          score: exact ? Math.max(similarity, thresholds.high) : similarity,
+        };
+      }).sort((a, b) => Number(b.exact) - Number(a.exact) || b.rrf - a.rrf);
       const eligible = all.filter((c) => eligibleFor(c.tiers, tier));
       const others = all.filter((c) => !eligibleFor(c.tiers, tier));
-      const topSimilarity = eligible.reduce((m, c) => Math.max(m, c.similarity), 0);
+      const topSimilarity = eligible.reduce((m, c) => Math.max(m, c.score), 0);
       const floor = thresholds.low - 0.05;
       return {
         query,
         tier,
-        chunks: eligible.filter((c) => c.similarity >= floor).slice(0, k),
-        otherTier: others.filter((c) => c.similarity >= thresholds.high).slice(0, 2),
+        chunks: eligible.filter((c) => c.score >= floor).slice(0, k),
+        otherTier: others.filter((c) => c.score >= thresholds.high).slice(0, 2),
         topSimilarity,
         band: bandFor(topSimilarity, thresholds),
         thresholds,

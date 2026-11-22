@@ -3,7 +3,7 @@ import { emptyFacts, type CustomerRecord } from '@sa/shared';
 import { availableTools, overlay, refundDecision } from '../packages/tools/src';
 import { numericClaims, numbersIn } from '../packages/agent/src/guardrails';
 import { chunkDocument } from '../packages/rag/src/chunker';
-import { keywordQuery } from '../packages/rag/src/retriever';
+import { identifiers, keywordQuery } from '../packages/rag/src/retriever';
 import { RateLimiter } from '../apps/api/src/ratelimit';
 
 const NOW = Date.UTC(2026, 10, 22);
@@ -93,6 +93,13 @@ describe('chunker', () => {
 describe('keywordQuery', () => {
   it('ORs meaningful terms and drops stopwords', () => {
     expect(keywordQuery('What does error E-4410 mean on my plan?')).toBe('error | 4410 | mean | plan');
+  });
+});
+
+describe('identifiers (exact-match confidence)', () => {
+  it('normalises error codes', () => {
+    expect(identifiers('what is error e4410, and E-2210?')).toEqual(['E-4410', 'E-2210']);
+    expect(identifiers('How do refunds work?')).toEqual([]);
   });
 });
 

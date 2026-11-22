@@ -221,7 +221,7 @@ export async function runTurn(req: TurnRequest, deps: AgentDeps): Promise<TurnRe
       attrs: {
         args: redactArgs(args),
         result: out.data,
-        ...(r ? { timings: r.timings, topSimilarity: r.topSimilarity, band: r.band, thresholds: r.thresholds, candidates: r.chunks.map((c) => ({ id: c.id, sim: Number(c.similarity.toFixed(3)), rrf: Number(c.rrf.toFixed(4)), tiers: c.tiers })), otherTier: r.otherTier.map((c) => c.id) } : {}),
+        ...(r ? { timings: r.timings, topSimilarity: r.topSimilarity, band: r.band, thresholds: r.thresholds, candidates: r.chunks.map((c) => ({ id: c.id, sim: Number(c.similarity.toFixed(3)), score: Number(c.score.toFixed(3)), rrf: Number(c.rrf.toFixed(4)), exact: c.exact, tiers: c.tiers })), otherTier: r.otherTier.map((c) => c.id) } : {}),
       },
     });
     emit({ type: 'step.completed', stepId, name, status: out.status === 'ok' ? 'ok' : out.status === 'blocked' ? 'blocked' : 'error', summary: out.summary, durationMs: Math.round(performance.now() - t0) });

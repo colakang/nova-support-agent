@@ -68,7 +68,7 @@ export function validateRespond(
   if (r.kind === 'grounded' && cited.length === 0) v.push({ check: 'citation_integrity', detail: 'kind is grounded but no valid citations. Search first, then cite the chunk_ids you used.' });
 
   // 2. retrieval confidence of what was actually cited
-  const best = cited.reduce((m, c) => Math.max(m, c.similarity), 0);
+  const best = cited.reduce((m, c) => Math.max(m, c.score), 0);
   if (r.kind === 'grounded' && cited.length && best < thresholds.low) {
     v.push({ check: 'retrieval_confidence', detail: `Cited passages are below the confidence threshold (${best.toFixed(2)} < ${thresholds.low}). Don't answer from them; offer a specialist.` });
   }

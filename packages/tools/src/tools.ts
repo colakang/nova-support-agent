@@ -175,7 +175,7 @@ async function searchPolicies(raw: unknown, ctx: ToolContext): Promise<ToolOutco
   ctx.turn.retrievals.push(r);
   const usable = r.band === 'low' ? [] : r.chunks;
   for (const c of usable) { ctx.turn.chunks.set(c.id, c); ctx.consultedDocs.add(c.docId); }
-  const fmt = (c: RetrievedChunk) => ({ chunk_id: c.id, doc: c.docId, section: c.sectionPath, applies_to: c.tiers, similarity: Number(c.similarity.toFixed(3)), text: c.content });
+  const fmt = (c: RetrievedChunk) => ({ chunk_id: c.id, doc: c.docId, section: c.sectionPath, applies_to: c.tiers, similarity: Number(c.similarity.toFixed(3)), ...(c.exact ? { exact_identifier_match: true } : {}), text: c.content });
   const note =
     r.band === 'low'
       ? `No passage is relevant enough (best similarity ${r.topSimilarity.toFixed(2)} < ${r.thresholds.low}). Do NOT answer from general knowledge. Tell the customer you can't confirm this and offer a human specialist.`
