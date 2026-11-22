@@ -1,0 +1,34 @@
+{
+  "name": "support-agent",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @sa/api --filter @sa/web dev",
+    "dev:api": "pnpm --filter @sa/api dev",
+    "dev:web": "pnpm --filter @sa/web dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "db:migrate": "node --import tsx apps/api/src/cli/migrate.ts",
+    "ingest": "node --import tsx packages/rag/src/cli/ingest.ts",
+    "calibrate": "node --import tsx evals/calibrate.ts",
+    "eval": "node --import tsx evals/run.ts",
+    "secrets:scan": "gitleaks detect --redact --verbose --source .",
+    "audit:batch": "node --import tsx evals/audit.ts",
+    "chat": "node --import tsx scripts/chat.ts"
+  },
+  "devDependencies": {
+    "@sa/agent": "workspace:*",
+    "@sa/rag": "workspace:*",
+    "@sa/shared": "workspace:*",
+    "@sa/tools": "workspace:*",
+    "@types/node": "^22.15.0",
+    "postgres": "^3.4.5",
+    "tsx": "^4.20.0",
+    "typescript": "~5.9.3",
+    "vitest": "^3.2.0"
+  }
+}

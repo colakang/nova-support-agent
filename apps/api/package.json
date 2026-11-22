@@ -1,0 +1,22 @@
+{
+  "name": "@sa/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --import tsx --watch src/index.ts",
+    "start": "node --import tsx src/index.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.14.0",
+    "@sa/agent": "workspace:*",
+    "@sa/rag": "workspace:*",
+    "@sa/shared": "workspace:*",
+    "@sa/tools": "workspace:*",
+    "hono": "^4.7.0",
+    "postgres": "^3.4.5",
+    "tsx": "^4.20.0",
+    "zod": "^3.25.0"
+  }
+}

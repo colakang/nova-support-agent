@@ -1,0 +1,167 @@
+[
+  {
+    "id": "cus_maya",
+    "name": "Maya Chen",
+    "email": "maya@brightloop.io",
+    "pin": "4821",
+    "company": "Brightloop",
+    "tier": "pro",
+    "billing_cycle": "monthly",
+    "contract": { "status": "active", "started_days_ago": 400, "renews_in_days": 21 },
+    "invoices": [
+      { "id": "INV-1042", "amount": 79, "days_ago": 9, "description": "Pro monthly subscription", "status": "paid" },
+      { "id": "INV-0988", "amount": 79, "days_ago": 39, "description": "Pro monthly subscription", "status": "paid" },
+      { "id": "INV-0931", "amount": 79, "days_ago": 69, "description": "Pro monthly subscription", "status": "paid" }
+    ],
+    "refunds_last_30d": [],
+    "account": {
+      "billing_email": "billing@brightloop.io",
+      "company_name": "Brightloop",
+      "invoice_address": "418 Alder Lane, Suite 300, Lakeport, OR 97001, USA",
+      "notification_preference": "email"
+    }
+  },
+  {
+    "id": "cus_dev",
+    "name": "Dev Patel",
+    "email": "dev@quantafoods.com",
+    "pin": "7310",
+    "company": "Quanta Foods",
+    "tier": "pro",
+    "billing_cycle": "annual",
+    "contract": { "status": "active", "started_days_ago": 20, "renews_in_days": 345 },
+    "invoices": [
+      { "id": "INV-2001", "amount": 790, "days_ago": 20, "description": "Pro annual", "status": "paid" }
+    ],
+    "refunds_last_30d": [],
+    "account": {
+      "billing_email": "accounts@quantafoods.com",
+      "company_name": "Quanta Foods Inc.",
+      "invoice_address": "2200 Mill Road, Building B, Cedar Falls, TX 75001, USA",
+      "notification_preference": "email"
+    }
+  },
+  {
+    "id": "cus_sofia",
+    "name": "Sofia Ramirez",
+    "email": "sofia@lumenarts.co",
+    "pin": "1188",
+    "company": "Lumen Arts",
+    "tier": "starter",
+    "billing_cycle": "monthly",
+    "contract": { "status": "active", "started_days_ago": 5, "renews_in_days": 25 },
+    "invoices": [
+      { "id": "INV-3001", "amount": 19, "days_ago": 5, "description": "Starter monthly subscription", "status": "paid" },
+      { "id": "INV-3002", "amount": 19, "days_ago": 5, "description": "Starter monthly subscription", "status": "paid", "duplicate_of": "INV-3001" }
+    ],
+    "refunds_last_30d": [],
+    "account": {
+      "billing_email": "sofia@lumenarts.co",
+      "company_name": "Lumen Arts",
+      "invoice_address": "12 Gallery Row, Unit 4, Santa Brisa, NM 87001, USA",
+      "notification_preference": "email"
+    }
+  },
+  {
+    "id": "cus_ken",
+    "name": "Ken Okafor",
+    "email": "ken@okaforlaw.com",
+    "pin": "5502",
+    "company": "Okafor & Partners LLP",
+    "tier": "enterprise",
+    "billing_cycle": "annual",
+    "contract": { "status": "active", "started_days_ago": 377, "renews_in_days": 353, "account_manager": "Priya Nair" },
+    "invoices": [
+      { "id": "INV-4001", "amount": 1800, "days_ago": 12, "description": "Enterprise annual contract, monthly installment", "status": "paid" }
+    ],
+    "refunds_last_30d": [],
+    "account": {
+      "billing_email": "ap@okaforlaw.com",
+      "company_name": "Okafor & Partners LLP",
+      "invoice_address": "90 Courthouse Plaza, Floor 14, Riverton, NY 10001, USA",
+      "notification_preference": "email"
+    }
+  },
+  {
+    "id": "cus_lena",
+    "name": "Lena Fischer",
+    "email": "lena@fischer.design",
+    "pin": "3307",
+    "company": "Fischer Design",
+    "tier": "pro",
+    "billing_cycle": "monthly",
+    "contract": { "status": "past_due", "started_days_ago": 250, "renews_in_days": 27, "balance_due": 158 },
+    "invoices": [
+      { "id": "INV-5003", "amount": 79, "days_ago": 3, "description": "Pro monthly subscription (payment failed)", "status": "open" },
+      { "id": "INV-5002", "amount": 79, "days_ago": 33, "description": "Pro monthly subscription (payment failed)", "status": "open" },
+      { "id": "INV-5001", "amount": 79, "days_ago": 63, "description": "Pro monthly subscription", "status": "paid" }
+    ],
+    "refunds_last_30d": [],
+    "account": {
+      "billing_email": "lena@fischer.design",
+      "company_name": "Fischer Design",
+      "invoice_address": "7 Linden Court, Studio 2, Maple Grove, IL 60001, USA",
+      "notification_preference": "sms"
+    }
+  },
+  {
+    "id": "cus_tom",
+    "name": "Tom Becker",
+    "email": "tom@beckerbuild.com",
+    "pin": "6619",
+    "company": "Becker Build",
+    "tier": "starter",
+    "billing_cycle": "monthly",
+    "contract": { "status": "cancelled", "started_days_ago": 180, "cancelled_days_ago": 20 },
+    "invoices": [
+      { "id": "INV-6002", "amount": 19, "days_ago": 6, "description": "Starter monthly subscription (charged after cancellation)", "status": "paid" },
+      { "id": "INV-6001", "amount": 19, "days_ago": 36, "description": "Starter monthly subscription", "status": "paid" }
+    ],
+    "refunds_last_30d": [],
+    "account": {
+      "billing_email": "office@beckerbuild.com",
+      "company_name": "Becker Build",
+      "invoice_address": "55 Foundry Street, Hillsdale, OH 43001, USA",
+      "notification_preference": "email"
+    }
+  },
+  {
+    "id": "cus_aiko",
+    "name": "Aiko Tanaka",
+    "email": "aiko@tanaka.studio",
+    "pin": "2290",
+    "company": "Tanaka Studio",
+    "tier": "pro",
+    "billing_cycle": "monthly",
+    "contract": { "status": "active", "started_days_ago": 300, "renews_in_days": 26 },
+    "invoices": [
+      { "id": "INV-7002", "amount": 79, "days_ago": 4, "description": "Pro monthly subscription", "status": "paid" },
+      { "id": "INV-7001", "amount": 79, "days_ago": 34, "description": "Pro monthly subscription", "status": "refunded" }
+    ],
+    "refunds_last_30d": [{ "invoice_id": "INV-7001", "amount": 79, "days_ago": 10 }],
+    "account": {
+      "billing_email": "aiko@tanaka.studio",
+      "company_name": "Tanaka Studio",
+      "invoice_address": "301 Kite Hill Road, Apt 5B, Bayview, CA 94001, USA",
+      "notification_preference": "none"
+    }
+  },
+  {
+    "id": "cus_raj",
+    "name": "Raj Mehta",
+    "email": "raj@trialbase.dev",
+    "pin": "9034",
+    "company": "Trialbase",
+    "tier": "pro",
+    "billing_cycle": "monthly",
+    "contract": { "status": "trial", "started_days_ago": 6 },
+    "invoices": [],
+    "refunds_last_30d": [],
+    "account": {
+      "billing_email": "raj@trialbase.dev",
+      "company_name": "Trialbase",
+      "invoice_address": "1 Startup Way, Suite 100, Granite Bay, WA 98001, USA",
+      "notification_preference": "email"
+    }
+  }
+]

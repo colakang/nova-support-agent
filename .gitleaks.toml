@@ -1,0 +1,7 @@
+# Default rules + a few allowlisted fake demo values (demo PINs and fixture emails are public test data).
+[extend]
+useDefault = true
+
+[allowlist]
+description = "fixtures and examples"
+paths = ['''\.env\.example$''', '''pnpm-lock\.yaml$''']

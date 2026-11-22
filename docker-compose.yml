@@ -1,0 +1,52 @@
+# Local dev:   docker compose up -d db           → Postgres 17 + pgvector on 127.0.0.1:5433
+# Production:  docker compose --profile prod up -d --build   (see deploy/README.md)
+#
+# Everything binds to 127.0.0.1 and lives on its own bridge network; a host reverse proxy
+# (nginx or Caddy) terminates TLS, serves the static web build and proxies /api.
+# Memory limits keep the demo from starving other services on a small shared host.
+name: support-agent
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: support
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-support}
+      POSTGRES_DB: support
+    command: ["postgres", "-c", "shared_buffers=64MB", "-c", "max_connections=30"]
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U support -d support"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 256m
+    networks: [internal]
+
+  api:
+    profiles: [prod]
+    build: { context: ., dockerfile: apps/api/Dockerfile }
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://support:${POSTGRES_PASSWORD:-support}@db:5432/support
+      PORT: "8080"
+      DATA_DIR: /app/data
+      TRUST_PROXY: "1"
+    ports:
+      - "127.0.0.1:${API_PORT:-8095}:8080"
+    depends_on:
+      db: { condition: service_healthy }
+    mem_limit: 320m
+    networks: [internal]
+
+volumes:
+  pgdata:
+
+networks:
+  internal:
+    driver: bridge

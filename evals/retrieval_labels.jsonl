@@ -1,0 +1,73 @@
+{"query":"How long do you keep my files after I cancel?","label":"in","doc_id":"cancellation-and-data-retention"}
+{"query":"if i cancel today do i lose access right away","label":"in","doc_id":"cancellation-and-data-retention"}
+{"query":"Will my data be permanently deleted at some point after the account closes?","label":"in","doc_id":"cancellation-and-data-retention"}
+{"query":"can i get my money back if i paid for starter last week?","label":"in","doc_id":"refund-policy"}
+{"query":"How much can support refund right away without someone approving it?","label":"in","doc_id":"refund-policy"}
+{"query":"I got billed twice, will you refund the extra charge?","label":"in","doc_id":"refund-policy"}
+{"query":"how long till the refund shows up on my card","label":"in","doc_id":"refund-policy"}
+{"query":"What does the Pro plan cost per month?","label":"in","doc_id":"plans-and-pricing"}
+{"query":"Is there an annual billing option for Starter?","label":"in","doc_id":"plans-and-pricing"}
+{"query":"whats the difference between pro and enterprise","label":"in","doc_id":"plans-and-pricing"}
+{"query":"My card was declined, what happens to my account now?","label":"in","doc_id":"billing-and-invoices"}
+{"query":"Where can I download our past invoices as PDFs?","label":"in","doc_id":"billing-and-invoices"}
+{"query":"what does past due mean on my account","label":"in","doc_id":"billing-and-invoices"}
+{"query":"where do I find my support pin","label":"in","doc_id":"account-security"}
+{"query":"What happens if I enter the wrong PIN too many times?","label":"in","doc_id":"account-security"}
+{"query":"How do I change the account owner's login email?","label":"in","doc_id":"account-security"}
+{"query":"How do I configure SAML single sign-on for our workspace?","label":"in","doc_id":"sso-setup"}
+{"query":"can we use OIDC with our identity provider for sso","label":"in","doc_id":"sso-setup"}
+{"query":"How do we force everyone to sign in through SSO?","label":"in","doc_id":"sso-setup"}
+{"query":"What's the API rate limit on the Starter plan?","label":"in","doc_id":"api-rate-limits"}
+{"query":"im getting http 429 errors from the api, why??","label":"in","doc_id":"api-rate-limits"}
+{"query":"how many api requests per minute does enterprise get","label":"in","doc_id":"api-rate-limits"}
+{"query":"desktop app keeps showing error E-2210","label":"in","doc_id":"sync-troubleshooting"}
+{"query":"Why is there a conflict copy of my file next to the original?","label":"in","doc_id":"sync-troubleshooting"}
+{"query":"files stopped syncing, how do i know if its an outage on your side","label":"in","doc_id":"sync-troubleshooting"}
+{"query":"What uptime do you commit to on the Pro plan?","label":"in","doc_id":"uptime-sla"}
+{"query":"how do i claim a service credit for downtime","label":"in","doc_id":"uptime-sla"}
+{"query":"Are SLA credits paid out as a cash refund?","label":"in","doc_id":"uptime-sla"}
+{"query":"What are the hours for chat support?","label":"in","doc_id":"support-channels"}
+{"query":"how fast do you answer emails on the starter plan","label":"in","doc_id":"support-channels"}
+{"query":"Is there 24/7 phone support for critical outages?","label":"in","doc_id":"support-channels"}
+{"query":"How do I export everything in our workspace?","label":"in","doc_id":"data-export"}
+{"query":"what format is the workspace export in","label":"in","doc_id":"data-export"}
+{"query":"Can I download our audit logs as a CSV?","label":"in","doc_id":"data-export"}
+{"query":"Are you SOC 2 compliant?","label":"in","doc_id":"compliance-and-privacy"}
+{"query":"Can we keep our data stored in the EU?","label":"in","doc_id":"compliance-and-privacy"}
+{"query":"do you sign a gdpr data processing addendum","label":"in","doc_id":"compliance-and-privacy"}
+{"query":"If I upgrade mid-month do I pay the full price?","label":"in","doc_id":"plan-changes"}
+{"query":"can i swich from yearly to monthly billing","label":"in","doc_id":"plan-changes"}
+{"query":"Who on our team is allowed to change the plan?","label":"in","doc_id":"plan-changes"}
+{"query":"How many people can we add on the Starter plan?","label":"in","doc_id":"storage-and-seats"}
+{"query":"whats the biggest file i can upload on pro","label":"in","doc_id":"storage-and-seats"}
+{"query":"What happens when our workspace runs out of storage?","label":"in","doc_id":"storage-and-seats"}
+{"query":"What's the weather in Lisbon tomorrow?","label":"out"}
+{"query":"Write me a haiku about the ocean.","label":"out"}
+{"query":"How do I reverse a linked list in Python?","label":"out"}
+{"query":"who won the football match last night","label":"out"}
+{"query":"Give me a good recipe for banana bread.","label":"out"}
+{"query":"Translate 'good morning' into Japanese.","label":"out"}
+{"query":"What's the capital of Australia?","label":"out"}
+{"query":"Can you recommend a sci-fi movie for tonight?","label":"out"}
+{"query":"Help me write a cover letter for a marketing job.","label":"out"}
+{"query":"what's 17% of 2,340","label":"out"}
+{"query":"Tell me a joke.","label":"out"}
+{"query":"How do I change the oil in my car?","label":"out"}
+{"query":"What's my horoscope for this week?","label":"out"}
+{"query":"Plan a 3-day itinerary for Rome.","label":"out"}
+{"query":"Should I put my savings in index funds or bonds?","label":"out"}
+{"query":"Do you have a Slack integration?","label":"out"}
+{"query":"Can we deploy Northstar on-prem in our own data center?","label":"out"}
+{"query":"What's the address of your headquarters?","label":"out"}
+{"query":"What is the refund policy for the Ultra plan?","label":"out"}
+{"query":"What's Northstar's stock price?","label":"out"}
+{"query":"How much does the Northstar mobile app cost?","label":"out"}
+{"query":"Can I pay my invoice with crypto?","label":"out"}
+{"query":"Do you offer a nonprofit discount?","label":"out"}
+{"query":"is there a student discount","label":"out"}
+{"query":"Do you have a referral or affiliate program?","label":"out"}
+{"query":"Can I password-protect a shared link?","label":"out"}
+{"query":"Is there a Linux version of the desktop app?","label":"out"}
+{"query":"Do you offer white-label or reseller plans?","label":"out"}
+{"query":"Can I get a discount for paying two years up front?","label":"out"}
+{"query":"Does Northstar run a bug bounty program?","label":"out"}

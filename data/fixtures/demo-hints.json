@@ -1,0 +1,66 @@
+[
+  {
+    "customerId": "cus_maya",
+    "name": "Maya Chen",
+    "email": "maya@brightloop.io",
+    "pin": "4821",
+    "tier": "pro",
+    "try": "Ask for a refund of your most recent invoice (INV-1042, $79, refunded instantly), then ask for INV-0988 (39 days old, outside the 30-day Pro window)."
+  },
+  {
+    "customerId": "cus_dev",
+    "name": "Dev Patel",
+    "email": "dev@quantafoods.com",
+    "pin": "7310",
+    "tier": "pro",
+    "try": "Ask to refund the unused part of your annual plan: the prorated ~$724 is over the $250 limit, so it goes to the billing team as a ticket."
+  },
+  {
+    "customerId": "cus_sofia",
+    "name": "Sofia Ramirez",
+    "email": "sofia@lumenarts.co",
+    "pin": "1188",
+    "tier": "starter",
+    "try": "Say you were charged twice this month: the duplicate $19 (INV-3002) is refunded immediately."
+  },
+  {
+    "customerId": "cus_ken",
+    "name": "Ken Okafor",
+    "email": "ken@okaforlaw.com",
+    "pin": "5502",
+    "tier": "enterprise",
+    "try": "Ask for a refund on INV-4001: Enterprise refunds always go to a human (account manager Priya Nair). Also ask what uptime your plan guarantees."
+  },
+  {
+    "customerId": "cus_lena",
+    "name": "Lena Fischer",
+    "email": "lena@fischer.design",
+    "pin": "3307",
+    "tier": "pro",
+    "try": "Ask for a refund on your last payment: blocked because the account is past due with a $158 balance. Then say you want to dispute INV-5002."
+  },
+  {
+    "customerId": "cus_tom",
+    "name": "Tom Becker",
+    "email": "tom@beckerbuild.com",
+    "pin": "6619",
+    "tier": "starter",
+    "try": "Say you were charged $19 after cancelling (INV-6002, refunded in full), then ask about INV-6001 (before cancellation, outside the 14-day window)."
+  },
+  {
+    "customerId": "cus_aiko",
+    "name": "Aiko Tanaka",
+    "email": "aiko@tanaka.studio",
+    "pin": "2290",
+    "tier": "pro",
+    "try": "Ask for a refund of INV-7002: you already had a refund in the last 30 days, so this one goes to the billing team."
+  },
+  {
+    "customerId": "cus_raj",
+    "name": "Raj Mehta",
+    "email": "raj@trialbase.dev",
+    "pin": "9034",
+    "tier": "pro",
+    "try": "Ask whether your team can turn on SSO (Enterprise only), or ask to change your company name on invoices to 'Trialbase Labs Inc.'"
+  }
+]

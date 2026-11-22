@@ -1,0 +1,31 @@
+# dependencies / build
+node_modules/
+.next/
+dist/
+out/
+*.tsbuildinfo
+coverage/
+
+# secrets — never commit. Only .env.example is tracked.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+credentials*.json
+cookies*.json
+appstate*.json
+service-account*.json
+
+# local data / caches
+.cache/
+evals/.cache/
+evals/results/*.json
+*.log
+.DS_Store
+.playwright-cli/
+.claude/
