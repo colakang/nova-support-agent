@@ -77,7 +77,7 @@ Example (real output, `pnpm chat`):
 **Retrieval** (`retriever.ts`): pgvector cosine plus Postgres full-text (OR over meaningful terms), fused with **Reciprocal Rank Fusion**. Vectors catch paraphrase ("get my money back" ≈ refund); full-text catches tokens that embeddings blur (`E-4410`, plan names).
 
 - **Tier handling:** search once, then *partition* the results in code into chunks *eligible* for the customer's tier and *other-plans-only* matches. That lets the agent say "SSO is an Enterprise feature" instead of "I don't know".
-- **Confidence** is the best cosine similarity among eligible chunks. RRF scores are rank-based and aren't comparable across queries, so they're used only for ordering.
+- **Confidence** is the best cosine similarity among eligible chunks. RRF scores are rank-based and aren't comparable across queries, so they're used only for ordering. The one exception is identifiers: when the query contains one (an error code like `E-4410`) and a chunk contains it verbatim, that chunk's confidence is lifted to τ_high. A three-word query embeds poorly against a paragraph, but an exact code match is the strongest signal available.
 
 **Thresholds are calibrated, not guessed** (`pnpm calibrate` → [`evals/results/calibration.md`](evals/results/calibration.md)). Over 73 labelled queries (43 in-scope, 30 out-of-scope):
 
@@ -130,21 +130,32 @@ Every turn records a span tree (`TurnRecorder`): each LLM call (model, tier, att
 
 ## Evals
 
-`pnpm eval` runs **60 end-to-end cases** ([`evals/cases.jsonl`](evals/cases.jsonl)) through the real orchestrator, tools, retriever and guardrails. The categories are policy Q&A, tier-specific answers, out-of-scope traps, actions for every persona, adversarial attempts (prompt injection, PIN fishing, fake policy, other customers' data) and escalation. Latest [`report.md`](evals/results/report.md):
+`pnpm eval` runs **62 end-to-end cases** ([`evals/cases.jsonl`](evals/cases.jsonl)) through the real orchestrator, tools, retriever and guardrails. The categories are policy Q&A, tier-specific answers, out-of-scope traps, actions for every persona, adversarial attempts (prompt injection, PIN fishing, fake policy, other customers' data) and escalation. The latest uncached run, [`report.md`](evals/results/report.md):
 
 | | |
 |---|---|
-| cases passed | **60/60** |
+| cases passed | **62/62** |
 | escalation precision / recall | **100% / 100%** |
 | out-of-scope questions answered anyway | **0/10** |
 | refunds issued that policy didn't allow | **0** |
-| turns where a guardrail rejected a draft (then repaired) | 10/96 |
-| turn latency p50 / p95 | 2.7 s / 6.5 s |
+| turns where a guardrail rejected a draft (then repaired) | 8/98 |
+| turn latency p50 / p95 | 2.4 s / 7.9 s (multi-tool refund chains are the p95) |
 
-The first run scored 54/60. Three failures were real bugs, fixed in the prompt and tools: general policy questions were wrongly gated behind verification; the agent judged a refund window itself instead of letting the billing tool decide; Enterprise refund tickets went to the wrong queue. Three expectations were too strict and were relaxed after reading the answers. In each, the behaviour was correct but phrased differently (e.g. "when your current term ends" vs "at renewal"). That's recorded here rather than hidden.
+**Stability.** LLMs are not deterministic, so one green run proves little. Across the last five uncached runs the pass counts were 62, 61, 60, 61 and 62 out of 62. The misses were the same answer phrased another way ("Settings, then Security"), an outcome label that was too narrow, and one unnecessary escalation (a plan downgrade sent to a human although the owner can do it in-app). The escalation was fixed with a "self-service beats a ticket" rule.
+
+**What the evals caught.** The first run scored 54/60. Three failures were real bugs, fixed in the prompt and tools:
+- general policy questions were wrongly gated behind verification;
+- the agent judged a refund window itself instead of letting the billing tool decide;
+- Enterprise refund tickets went to the wrong queue.
+
+Other expectations were too strict and were relaxed after reading the answers; in each, the behaviour was correct but phrased differently. Building the error-code cases also exposed a retrieval bug:
+- Postgres tokenises `E-4410` as `e` + `-4410` (a negative number), so full-text never matched error codes;
+- short identifier queries embed poorly (cosine 0.46) even when the exact row is found.
+
+Both are fixed (identifier-aware full-text plus an exact-match confidence lift) and covered by tests.
 
 **Cost-aware eval infra.**
-- Evals run on the **flex** service tier (half price), with a disk cache of LLM responses keyed by request hash, so re-running unchanged cases is free. A full uncached run costs about **$0.09**.
+- Evals run on the **flex** service tier (half price), with a disk cache of LLM responses keyed by request hash, so re-running unchanged cases is free. A full uncached run (98 turns, ~200 LLM calls) costs about **$0.06**.
 - `pnpm audit:batch` re-judges every substantive reply with a stronger model via the **Batch API** (another 50% off), against exactly the evidence the agent saw. Batch fits there because each judgement is independent; it can't drive the agent loop itself, where every step depends on the previous one.
 
 ## Production readiness

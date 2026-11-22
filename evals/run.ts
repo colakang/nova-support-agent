@@ -19,7 +19,8 @@ interface Case {
   category: string;
   turns: string[];
   expect: {
-    outcome: string;
+    /** One outcome, or several equally acceptable ones (the safety properties live in the other fields). */
+    outcome: string | string[];
     tools_include?: string[];
     tools_exclude?: string[];
     cite_doc?: string;
@@ -50,7 +51,7 @@ const customers = loadCustomers();
 const retriever = pgRetriever(sql, openaiEmbedder(), thresholds);
 
 interface Evidence { name: string; args: unknown; result: unknown }
-interface TurnLog { text: string; answer: string; evidence: Evidence[]; kind: string | undefined; citations: string[]; outcome: string; ms: number; firstStatusMs: number | null; cost: number; llmCalls: number; guardrailFails: string[]; error?: string }
+interface TurnLog { text: string; answer: string; evidence: Evidence[]; kind: string | undefined; citations: string[]; outcome: string; ms: number; firstStatusMs: number | null; cost: number; llmCalls: number; cachedCalls: number; guardrailFails: string[]; error?: string }
 interface CaseResult { id: string; category: string; pass: boolean; reasons: string[]; actual: string; expected: string; turns: TurnLog[]; tools: Array<{ name: string; status: string; summary: string }>; escalated: boolean }
 
 async function runCase(c: Case): Promise<CaseResult> {
@@ -67,7 +68,7 @@ async function runCase(c: Case): Promise<CaseResult> {
     turns.push({
       text, answer: r.answer?.content ?? '', kind: r.answer?.kind,
       evidence: r.trace.spans.filter((sp) => sp.kind === 'tool' || sp.kind === 'retrieval').map((sp) => ({ name: sp.name.replace(/^tool\./, ''), args: sp.attrs?.args, result: sp.attrs?.result })), citations: r.answer?.citations?.map((x) => x.chunkId) ?? [],
-      outcome: r.outcome, ms: r.trace.durationMs, firstStatusMs: r.trace.firstStatusMs, cost: r.trace.totals.costUsd, llmCalls: r.trace.totals.llmCalls,
+      outcome: r.outcome, ms: r.trace.durationMs, firstStatusMs: r.trace.firstStatusMs, cost: r.trace.totals.costUsd, llmCalls: r.trace.totals.llmCalls, cachedCalls: r.trace.spans.filter((sp) => sp.kind === 'llm' && sp.attrs?.cached === true).length,
       guardrailFails: events.filter((e) => e.type === 'guardrail' && e.decision === 'fail').map((e) => (e.type === 'guardrail' ? e.check : '')),
       ...(r.error ? { error: `${r.error.code}: ${r.error.message}` } : {}),
     });
@@ -87,9 +88,9 @@ async function runCase(c: Case): Promise<CaseResult> {
 
   const reasons: string[] = [];
   const e = c.expect;
-  const accepted = new Set([e.outcome]);
-  if (c.category === 'out_of_scope' && e.outcome === 'declined') accepted.add('escalated');
-  if (!accepted.has(actual)) reasons.push(`outcome ${actual} ≠ ${e.outcome}`);
+  const accepted = new Set(Array.isArray(e.outcome) ? e.outcome : [e.outcome]);
+  if (c.category === 'out_of_scope' && accepted.has('declined')) accepted.add('escalated');
+  if (!accepted.has(actual)) reasons.push(`outcome ${actual} ≠ ${[...accepted].join('|')}`);
   for (const t of e.tools_include ?? []) if (!tools.some((x) => x.name === t)) reasons.push(`tool ${t} not called`);
   for (const t of e.tools_exclude ?? []) if (okTool(t)) reasons.push(`tool ${t} succeeded but must not`);
   if (e.cite_doc && !last.citations.some((id) => id.startsWith(`${e.cite_doc}#`))) reasons.push(`no citation from ${e.cite_doc}`);
@@ -97,7 +98,7 @@ async function runCase(c: Case): Promise<CaseResult> {
   if (e.answer_contains_any?.length && !e.answer_contains_any.some((x) => ans.includes(x.toLowerCase()))) reasons.push(`answer lacks any of ${JSON.stringify(e.answer_contains_any)}`);
   for (const x of e.answer_excludes ?? []) if (ans.includes(x.toLowerCase())) reasons.push(`answer contains "${x}"`);
   if (turns.some((t) => t.error)) reasons.push(`error: ${turns.find((t) => t.error)!.error}`);
-  return { id: c.id, category: c.category, pass: reasons.length === 0, reasons, actual, expected: e.outcome, turns, tools, escalated };
+  return { id: c.id, category: c.category, pass: reasons.length === 0, reasons, actual, expected: Array.isArray(e.outcome) ? e.outcome.join('|') : e.outcome, turns, tools, escalated };
 }
 
 async function pool<T, R>(items: T[], n: number, fn: (t: T) => Promise<R>): Promise<R[]> {
@@ -148,6 +149,7 @@ const md = [
   `| turns where a guardrail rejected a draft (then repaired or fell back) | ${guardrailInterventions}/${allTurns.length} |`,
   `| turn latency p50 / p95 | ${(q(allTurns.map((t) => t.ms), 0.5) / 1000).toFixed(1)}s / ${(q(allTurns.map((t) => t.ms), 0.95) / 1000).toFixed(1)}s |`,
   `| time to first status p50 | ${q(allTurns.map((t) => t.firstStatusMs ?? 0), 0.5)}ms |`,
+  `| LLM calls served from the eval cache | ${allTurns.reduce((a, t) => a + t.cachedCalls, 0)}/${allTurns.reduce((a, t) => a + t.llmCalls, 0)}${allTurns.some((t) => t.cachedCalls) ? ' (latency/cost above are NOT representative; run with --no-cache)' : ''} |`,
   `| LLM calls per turn (mean) | ${(allTurns.reduce((a, t) => a + t.llmCalls, 0) / Math.max(allTurns.length, 1)).toFixed(1)} |`,
   `| cost per turn (mean, ${tier}) / total | $${(totalCost / Math.max(allTurns.length, 1)).toFixed(4)} / $${totalCost.toFixed(3)} (cached calls count $0) |`,
   '',
