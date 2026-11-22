@@ -116,8 +116,12 @@ export async function runTurn(req: TurnRequest, deps: AgentDeps): Promise<TurnRe
   const startedAt = Date.now();
   let firstStatusMs: number | null = null;
   let answerReadyMs: number | null = null;
+  const guardrailLog: NonNullable<TurnTrace['guardrails']> = [];
   const emit = (e: AgentEventInput) => {
     if (firstStatusMs === null && e.type === 'step.started') firstStatusMs = rec.elapsed();
+    if (e.type === 'guardrail') {
+      guardrailLog.push({ check: e.check, decision: e.decision, detail: e.detail, at: Date.now(), ...(e.score !== undefined ? { score: e.score } : {}), ...(e.threshold !== undefined ? { threshold: e.threshold } : {}) });
+    }
     req.emit({ ...e, turnId, at: Date.now() } as AgentEvent);
   };
   const persist = req.persistMessages ?? true;
@@ -413,6 +417,7 @@ export async function runTurn(req: TurnRequest, deps: AgentDeps): Promise<TurnRe
     const trace: TurnTrace = {
       turnId, sessionId: req.sessionId, mode: req.mode, userText: redact(req.text), startedAt,
       durationMs: rec.elapsed(), firstStatusMs, answerReadyMs, spans: rec.spans, totals: rec.totals(), outcome,
+      guardrails: guardrailLog,
     };
     await deps.store.saveTrace(trace).catch((e) => console.error('[agent] saveTrace', e));
     const fresh = await deps.store.get(req.sessionId).catch(() => null);

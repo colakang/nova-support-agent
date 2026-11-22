@@ -138,7 +138,7 @@ export function TurnsTab({ traces, guardrailsByTurn }: { traces: TurnTrace[]; gu
           <TurnCard
             key={t.turnId}
             trace={t}
-            guardrails={guardrailsByTurn.get(t.turnId) ?? []}
+            guardrails={guardrailsByTurn.get(t.turnId) ?? (t.guardrails ?? []).map((g) => ({ ...g, type: 'guardrail' as const, turnId: t.turnId, check: g.check as GuardrailEvent['check'] }))}
             open={open}
             onToggle={() => setToggled((m) => ({ ...m, [t.turnId]: !open }))}
           />

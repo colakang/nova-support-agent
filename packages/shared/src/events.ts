@@ -47,6 +47,10 @@ export const TurnTrace = z.object({
     toolCalls: z.number().int(),
   }),
   outcome: z.string(),
+  /** Guardrail decisions of this turn, persisted so the drawer can show them after a reload. */
+  guardrails: z
+    .array(z.object({ check: z.string(), decision: z.enum(['pass', 'warn', 'fail', 'escalate']), score: z.number().optional(), threshold: z.number().optional(), detail: z.string(), at: z.number() }))
+    .optional(),
 });
 export type TurnTrace = z.infer<typeof TurnTrace>;
 
