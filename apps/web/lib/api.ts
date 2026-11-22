@@ -14,7 +14,9 @@ import {
   readSse,
 } from '@sa/shared';
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '';
+// Next only reads env files from apps/web, not the repo root, so default sensibly:
+// dev → the local API on :8080; production builds → same origin (reverse proxy serves /api).
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? (process.env.NODE_ENV === 'development' ? 'http://localhost:8080' : '');
 
 export type ApiErrorCode = 'rate_limited' | 'budget_exceeded' | 'not_found' | 'bad_request' | 'network' | 'internal' | 'http';
 

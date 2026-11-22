@@ -190,13 +190,36 @@ db/schema.sql       one schema, idempotent             deploy/         nginx sit
 
 ## Run locally
 
+**Prerequisites:** Node 22+, pnpm 12+ (`npm i -g pnpm@12`), Docker (only for the database) and an OpenAI API key.
+
 ```bash
-cp .env.example .env              # add OPENAI_API_KEY
-docker compose up -d db           # Postgres + pgvector on :5433
+cp .env.example .env              # set OPENAI_API_KEY; every other value has a working default
+docker compose up -d db           # Postgres 17 + pgvector on 127.0.0.1:5433
 pnpm install
-pnpm db:migrate && pnpm ingest    # schema + embed the corpus (~$0.0002)
-pnpm dev                          # api :8080 + web :3000
-pnpm test                         # unit tests (policy, gating, chunker, guardrails) — no API calls
-pnpm calibrate && pnpm eval       # thresholds + end-to-end evals (flex tier, cached)
-pnpm chat "What are the API rate limits on Pro?"   # terminal client
+pnpm db:migrate && pnpm ingest    # schema + embed the 14-doc corpus (~$0.0002)
+pnpm dev                          # api on :8080 + web on :3000  →  open http://localhost:3000
 ```
+
+Voice needs a microphone and a secure context. `localhost` counts as one, so it works in dev.
+
+| command | what it does |
+|---|---|
+| `pnpm test` | unit tests (refund policy, tool gating, chunker, guardrails, rate limiter); no API calls |
+| `pnpm typecheck` | strict TypeScript across all packages |
+| `pnpm calibrate` | re-derives τ_low / τ_high from `evals/retrieval_labels.jsonl` |
+| `pnpm eval` | 62 end-to-end cases on the flex tier with an LLM cache (`--no-cache`, `--only id`, `--category x`) |
+| `pnpm audit:batch` | Batch API audit of the latest eval run |
+| `pnpm chat "…" "…"` | terminal client for the SSE API (`--chaos '{"toolFailure":"transient"}'`) |
+
+### Configuration
+
+All configuration is environment variables. [`.env.example`](.env.example) lists every variable the code reads, with defaults and comments. Only `OPENAI_API_KEY` is required.
+
+- **Secrets:** `OPENAI_API_KEY` and, in production, `POSTGRES_PASSWORD`. These live only in `.env` (git-ignored) or on the host.
+- **The key never reaches the browser.** For voice, the API mints a 2-minute ephemeral client secret per call.
+- **Use a dedicated OpenAI project key with a monthly limit.** The app adds its own daily and per-session caps (`DAILY_BUDGET_USD`, `SESSION_BUDGET_USD`) and per-IP rate limits on top.
+- **Optional pre-commit secret scan:** `git config core.hooksPath .githooks` (needs [gitleaks](https://github.com/gitleaks/gitleaks)). CI scans the full history on every push.
+
+## Deploy
+
+See [`deploy/README.md`](deploy/README.md). In short: two containers (pgvector, API) on any Docker host, bound to localhost, behind a reverse proxy that serves the static web build and proxies `/api` with buffering off. `deploy/deploy.sh` builds, syncs, migrates, ingests and health-checks in one step.
