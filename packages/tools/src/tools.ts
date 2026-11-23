@@ -10,7 +10,7 @@ import { type RetrievalResult, type RetrievedChunk, type Retriever, RetrievalUna
 import { type CustomerDirectory, overlay, toView } from './customers';
 import type { RefundLedger } from './ledger';
 import {
-  AGENT_REFUNDS_PER_30_DAYS, DUPLICATE_CHARGE_AGENT_LIMIT_USD, MAX_VERIFY_FAILURES, PLAN_PRICES,
+  ACCOUNT_VERIFY_FAILURES_PER_HOUR, AGENT_REFUNDS_PER_30_DAYS, DUPLICATE_CHARGE_AGENT_LIMIT_USD, MAX_VERIFY_FAILURES, PLAN_PRICES,
   PRO_ANNUAL_PRORATION_WINDOW_DAYS, REFUND_RULES, UPDATABLE_FIELDS,
 } from './policy';
 
@@ -124,6 +124,20 @@ export function availableTools(ctx: Pick<ToolContext, 'facts' | 'consultedDocs'>
 
 // ---------------------------------------------------------------- implementations
 
+/** Failed verifications per account across sessions (single instance → in memory; Redis when scaled out).
+ *  Keyed by the email as typed, so unknown emails are throttled identically (no account enumeration). */
+const accountFailures = new Map<string, number[]>();
+const HOUR = 3_600_000;
+export function accountLocked(email: string, now: number): boolean {
+  const recent = (accountFailures.get(email) ?? []).filter((t) => now - t < HOUR);
+  accountFailures.set(email, recent);
+  return recent.length >= ACCOUNT_VERIFY_FAILURES_PER_HOUR;
+}
+function recordAccountFailure(email: string, now: number) {
+  accountFailures.set(email, [...(accountFailures.get(email) ?? []), now]);
+}
+export const resetAccountFailures = () => accountFailures.clear(); // tests
+
 const VerifyArgs = z.object({ email: z.string().trim().min(3).max(200), pin: z.string().trim() });
 
 async function verifyCustomer(raw: unknown, ctx: ToolContext): Promise<ToolOutcome> {
@@ -132,9 +146,19 @@ async function verifyCustomer(raw: unknown, ctx: ToolContext): Promise<ToolOutco
   if (ctx.facts.verifyFailures >= MAX_VERIFY_FAILURES) {
     return { status: 'blocked', summary: 'Verification locked', data: { verified: false, locked: true }, requiresHuman: 'verification_locked' };
   }
+  const emailKey = a.email.trim().toLowerCase();
+  if (accountLocked(emailKey, ctx.now)) {
+    return {
+      status: 'blocked',
+      summary: 'Verification temporarily locked for this account (too many failed attempts)',
+      data: { verified: false, locked: true, reason: 'too many failed attempts for this account recently; the security team must help' },
+      requiresHuman: 'verification_locked',
+    };
+  }
   const rec = ctx.customers.findByEmail(a.email);
   if (!rec || rec.pin !== a.pin.replace(/\D/g, '')) {
     ctx.facts.verifyFailures += 1;
+    recordAccountFailure(emailKey, ctx.now);
     const remaining = MAX_VERIFY_FAILURES - ctx.facts.verifyFailures;
     // Same message whether the email exists or not: no account enumeration.
     return {

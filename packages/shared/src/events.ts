@@ -75,6 +75,7 @@ export const GuardrailCheck = z.enum([
   'escalation_policy',
   'tool_policy',
   'verification',
+  'moderation',
 ]);
 export type GuardrailCheck = z.infer<typeof GuardrailCheck>;
 

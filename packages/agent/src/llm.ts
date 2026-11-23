@@ -146,10 +146,12 @@ export async function callLlm(req: LlmRequest, opts: LlmCallOptions): Promise<Ll
       if (!err.retryable || attempt === 3) break;
       let waitMs: number;
       let reason: string;
-      if (err.kind === 'rate_limited' && tier === 'flex' && /resource|capacity|unavailable/i.test(err.message)) {
+      if (tier === 'flex' && (err.kind === 'timeout' || (err.kind === 'rate_limited' && /resource|capacity|unavailable/i.test(err.message)))) {
+        // Flex is queue-based: when it's congested the same model on the default tier answers in
+        // seconds. Switching tier beats switching to a weaker model.
         tier = 'default';
         waitMs = 0;
-        reason = 'flex capacity unavailable → default tier';
+        reason = `flex ${err.kind === 'timeout' ? 'timed out' : 'capacity unavailable'} → default tier`;
       } else if (err.kind === 'rate_limited') {
         waitMs = Math.min(err.retryAfterMs ?? 1000 * 2 ** attempt, 8000);
         reason = `rate limited (429), retry-after ${(waitMs / 1000).toFixed(1)}s`;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { emptyFacts, type CustomerRecord } from '@sa/shared';
+import { emptyFacts, redactPins, type CustomerRecord } from '@sa/shared';
 import { parseEnvValue } from '../packages/shared/src/env';
-import { availableTools, overlay, refundDecision } from '../packages/tools/src';
+import { availableTools, executeTool, newTurnState, overlay, refundDecision, resetAccountFailures, type ToolContext } from '../packages/tools/src';
 import { numericClaims, numbersIn } from '../packages/agent/src/guardrails';
 import { chunkDocument } from '../packages/rag/src/chunker';
 import { identifiers, keywordQuery } from '../packages/rag/src/retriever';
@@ -101,6 +101,37 @@ describe('identifiers (exact-match confidence)', () => {
   it('normalises error codes', () => {
     expect(identifiers('what is error e4410, and E-2210?')).toEqual(['E-4410', 'E-2210']);
     expect(identifiers('How do refunds work?')).toEqual([]);
+  });
+});
+
+describe('security', () => {
+  it('redacts PINs before anything is persisted', () => {
+    expect(redactPins('maya@brightloop.io, PIN 4821')).toBe('maya@brightloop.io, PIN ••••');
+    expect(redactPins('my pin is 1234 thanks')).toBe('my pin is •••• thanks');
+    expect(redactPins('invoice INV-1042 for $79')).toBe('invoice INV-1042 for $79');
+  });
+
+  it('locks verification per account across sessions (PIN brute force)', async () => {
+    resetAccountFailures();
+    const rec = cust({ email: 'victim@x.io', pin: '4821' });
+    const customers = { findByEmail: (e: string) => (e.toLowerCase() === 'victim@x.io' ? rec : undefined), get: () => rec, all: () => [rec] };
+    const ctxFor = (i: number): ToolContext => ({
+      sessionId: `s${i}`, facts: emptyFacts(), consultedDocs: new Set(), turn: newTurnState(),
+      retriever: { thresholds: { high: 0.63, low: 0.5 }, search: async () => { throw new Error('unused'); } },
+      customers, ledger: { commit: async () => { throw new Error('unused'); } },
+      chaos: { llmTimeout: false, llmRateLimit: false, toolFailure: 'none', retrievalDown: false }, now: NOW,
+    });
+    // 5 wrong PINs spread over 5 fresh sessions (each session alone would allow 3)
+    for (let i = 0; i < 5; i++) await executeTool('verify_customer', { email: 'victim@x.io', pin: String(1000 + i) }, ctxFor(i));
+    // the right PIN in a brand-new session is now refused
+    const out = await executeTool('verify_customer', { email: 'victim@x.io', pin: '4821' }, ctxFor(99));
+    expect(out.status).toBe('blocked');
+    expect(out.requiresHuman).toBe('verification_locked');
+    // and an unknown email is throttled the same way (no account enumeration)
+    for (let i = 0; i < 5; i++) await executeTool('verify_customer', { email: 'nobody@x.io', pin: '0000' }, ctxFor(200 + i));
+    const ghost = await executeTool('verify_customer', { email: 'nobody@x.io', pin: '0000' }, ctxFor(300));
+    expect(ghost.summary).toBe(out.summary);
+    resetAccountFailures();
   });
 });
 

@@ -156,3 +156,6 @@ export const SessionView = z.object({
   createdAt: z.number(),
 });
 export type SessionView = z.infer<typeof SessionView>;
+
+/** "PIN 4821" → "PIN ••••". Applied to everything we persist or trace; the model sees the raw turn once. */
+export const redactPins = (s: string) => s.replace(/(\bpin\b\D{0,12})(\d{4})\b/gi, '$1••••');

@@ -116,7 +116,7 @@ Each failure below can be triggered from the UI's **Chaos** menu, so you can wat
 |---|---|
 | LLM 429 | honours `retry-after` (capped), retries the same model; the step shows `↻ rate limited, retry-after 1.5s` |
 | LLM timeout / 5xx | retries once on the **fallback model** (`gpt-6-luna`); a slow primary shouldn't hold the customer |
-| flex capacity error | drops to the default tier |
+| flex capacity error or flex timeout | same model on the default tier |
 | all retries exhausted | error card with **Retry** (the server de-duplicates the user message) and **Talk to a human**; nothing is lost |
 | tool failure (transient) | one automatic retry after 500 ms |
 | tool failure (permanent) | the model is told the action didn't happen; validation stops it claiming success; it offers a ticket |
@@ -130,18 +130,18 @@ Every turn records a span tree (`TurnRecorder`): each LLM call (model, tier, att
 
 ## Evals
 
-`pnpm eval` runs **62 end-to-end cases** ([`evals/cases.jsonl`](evals/cases.jsonl)) through the real orchestrator, tools, retriever and guardrails. The categories are policy Q&A, tier-specific answers, out-of-scope traps, actions for every persona, adversarial attempts (prompt injection, PIN fishing, fake policy, other customers' data) and escalation. The latest uncached run, [`report.md`](evals/results/report.md):
+`pnpm eval` runs **76 end-to-end cases** ([`evals/cases.jsonl`](evals/cases.jsonl)) through the real orchestrator, tools, retriever and guardrails. The categories are policy Q&A, tier-specific answers, out-of-scope traps, actions for every persona, adversarial attempts (prompt injection, PIN fishing, fake policy, other customers' data) and escalation. The latest uncached run on the default tier (the same configuration as production), [`report.md`](evals/results/report.md):
 
 | | |
 |---|---|
-| cases passed | **62/62** |
+| cases passed | **76/76** (adversarial 21/21) |
 | escalation precision / recall | **100% / 100%** |
 | out-of-scope questions answered anyway | **0/10** |
 | refunds issued that policy didn't allow | **0** |
-| turns where a guardrail rejected a draft (then repaired) | 8/98 |
-| turn latency p50 / p95 | 2.4 s / 7.9 s (multi-tool refund chains are the p95) |
+| turns where a guardrail rejected a draft (then repaired) | 15/116 |
+| turn latency p50 / p95 | 3.8 s / 8.1 s (multi-tool refund chains are the p95) |
 
-**Stability.** LLMs are not deterministic, so one green run proves little. Across the last five uncached runs the pass counts were 62, 61, 60, 61 and 62 out of 62. The misses were the same answer phrased another way ("Settings, then Security"), an outcome label that was too narrow, and one unnecessary escalation (a plan downgrade sent to a human although the owner can do it in-app). The escalation was fixed with a "self-service beats a ticket" rule.
+**Stability.** LLMs are not deterministic, so one green run proves little. On the earlier 62-case set, five uncached runs passed 62, 61, 60, 61 and 62. The misses were the same answer phrased another way ("Settings, then Security"), an outcome label that was too narrow, and one unnecessary escalation (a plan downgrade sent to a human although the owner can do it in-app). The escalation was fixed with a "self-service beats a ticket" rule.
 
 **What the evals caught.** The first run scored 54/60. Three failures were real bugs, fixed in the prompt and tools:
 - general policy questions were wrongly gated behind verification;
@@ -155,8 +155,31 @@ Other expectations were too strict and were relaxed after reading the answers; i
 Both are fixed (identifier-aware full-text plus an exact-match confidence lift) and covered by tests.
 
 **Cost-aware eval infra.**
-- Evals run on the **flex** service tier (half price), with a disk cache of LLM responses keyed by request hash, so re-running unchanged cases is free. A full uncached run (98 turns, ~200 LLM calls) costs about **$0.06**.
+- Evals run on the **flex** service tier (half price), with a disk cache of LLM responses keyed by request hash, so re-running unchanged cases is free. A full uncached run costs about **$0.08** on flex and **$0.16** on the default tier. When flex is congested, calls switch to the default tier instead of waiting; an eval run once found flex queueing turns at 17 s.
 - `pnpm audit:batch` re-judges every substantive reply with a stronger model via the **Batch API** (another 50% off), against exactly the evidence the agent saw. Batch fits there because each judgement is independent; it can't drive the agent loop itself, where every step depends on the previous one.
+
+## Security
+
+There is no security requirement in the brief, but a support agent that can move money is a target. **The main line of defence is structural, not the prompt.** The system prompt is in this public repo and shown in the observability drawer, so nothing may depend on it staying secret.
+
+| attack | control | where | evidence |
+|---|---|---|---|
+| Prompt injection / jailbreak ("ignore previous instructions", role-play, fake `SYSTEM:` lines, other languages) | Tools are exposed by session state; money and account changes are decided by code; customer text is labelled untrusted | `availableTools`, `policy.ts`, `refundDecision` | 21/21 adversarial evals |
+| Cross-account data or actions | One identity per session (`verify_customer` disappears after success). Tools take the customer id from session state, never from model arguments. Invoices are looked up only inside the verified account | `tools.ts` | `adv-cross-account-refund`, `-update`, `adv-switch-identity`, `adv-other-customer-data` |
+| PIN brute force | 3 failures per conversation **and** 5 per account per hour across sessions. Unknown emails get the identical response (no account enumeration). Per-IP session rate limit | `accountLocked` | unit test |
+| Argument / amount tampering | Strict JSON schemas plus zod validation; amount capped at the policy-eligible amount; idempotency key per invoice | `issueRefund` | `adv-amount-tamper`, `adv-sql-in-args` |
+| System-prompt extraction | The prompt holds no secrets and no product facts; the agent still declines to recite it | `prompts.ts` | `adv-system-prompt`, `-repeat-above`, `-translate` |
+| SSRF / reaching the internal network | No fetch or browse tool exists; tools are closed-world; outbound calls only go to fixed OpenAI endpoints; containers sit on an isolated network bound to localhost | `docker-compose.yml` | `adv-ssrf-internal` |
+| Harmful content / trolling | `omni-moderation` runs in parallel with the first LLM call (~0 ms added). Severe categories are blocked before any tool runs; self-harm gets a fixed, caring reply. Plain profanity is allowed (angry customers are customers) and feeds the frustration → human rule | `moderation.ts` | `adv-self-harm`, `adv-angry-but-legit`, `adv-abuse-insult` |
+| Hallucinated policy or money | Validate-then-release guardrails (see above) | `guardrails.ts` | 0/10 out-of-scope answered, 0 unauthorised refunds |
+| XSS via model output | Answers are rendered as text, never as HTML | `apps/web` | — |
+| Denial of wallet | Per-IP rate limits, per-session and daily spend caps, 2-minute voice secrets, max call duration; the live demo is also behind basic auth | `apps/api` | — |
+| Secret leakage | The API key stays server-side; PINs are redacted from persisted messages and traces; gitleaks runs on commit and scans the full history in CI | — | — |
+
+**Known gaps** (fine for a demo; fix before real traffic):
+- lockout and rate-limit counters are in memory, so they belong in Redis once there's more than one instance;
+- voice usage is reported by the browser;
+- the origin isn't yet restricted to Cloudflare IP ranges.
 
 ## Production readiness
 

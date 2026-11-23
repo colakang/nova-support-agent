@@ -17,6 +17,7 @@ const CHECK_LABEL: Record<GuardrailEvent['check'], string> = {
   citation_integrity: 'Citations',
   number_provenance: 'Numbers',
   escalation_policy: 'Escalation policy',
+  moderation: 'Content moderation',
   tool_policy: 'Tool policy',
   verification: 'Verification',
 };

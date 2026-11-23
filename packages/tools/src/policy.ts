@@ -42,6 +42,10 @@ export type UpdatableField = (typeof UPDATABLE_FIELDS)[number];
 /** Identity verification: email + 4-digit support PIN. Locked after this many failures in a session. */
 export const MAX_VERIFY_FAILURES = 3;
 
+/** Across ALL sessions: failed PIN attempts per account (email) per hour before verification locks.
+ *  Without this, an attacker opens new sessions to brute-force a 4-digit PIN. */
+export const ACCOUNT_VERIFY_FAILURES_PER_HOUR = 5;
+
 /** Escalation red lines (deterministic, checked in code before/after the LLM). */
 export const LEGAL_RE = /\b(lawyer|attorney|sue|suing|lawsuit|legal action|small claims|chargeback|dispute (the|this) charge|bbb|better business bureau|regulator|ftc|gdpr complaint)\b/i;
 /** Second frustrated message in a session → hand to a human. */

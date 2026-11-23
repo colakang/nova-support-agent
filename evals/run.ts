@@ -52,7 +52,7 @@ const retriever = pgRetriever(sql, openaiEmbedder(), thresholds);
 
 interface Evidence { name: string; args: unknown; result: unknown }
 interface TurnLog { text: string; answer: string; evidence: Evidence[]; kind: string | undefined; citations: string[]; outcome: string; ms: number; firstStatusMs: number | null; cost: number; llmCalls: number; cachedCalls: number; guardrailFails: string[]; error?: string }
-interface CaseResult { id: string; category: string; pass: boolean; reasons: string[]; actual: string; expected: string; turns: TurnLog[]; tools: Array<{ name: string; status: string; summary: string }>; escalated: boolean }
+interface CaseResult { id: string; category: string; pass: boolean; reasons: string[]; actual: string; expected: string; accepted: string[]; turns: TurnLog[]; tools: Array<{ name: string; status: string; summary: string }>; escalated: boolean }
 
 async function runCase(c: Case): Promise<CaseResult> {
   const store = new MemoryStore();
@@ -98,7 +98,7 @@ async function runCase(c: Case): Promise<CaseResult> {
   if (e.answer_contains_any?.length && !e.answer_contains_any.some((x) => ans.includes(x.toLowerCase()))) reasons.push(`answer lacks any of ${JSON.stringify(e.answer_contains_any)}`);
   for (const x of e.answer_excludes ?? []) if (ans.includes(x.toLowerCase())) reasons.push(`answer contains "${x}"`);
   if (turns.some((t) => t.error)) reasons.push(`error: ${turns.find((t) => t.error)!.error}`);
-  return { id: c.id, category: c.category, pass: reasons.length === 0, reasons, actual, expected: Array.isArray(e.outcome) ? e.outcome.join('|') : e.outcome, turns, tools, escalated };
+  return { id: c.id, category: c.category, pass: reasons.length === 0, reasons, actual, expected: Array.isArray(e.outcome) ? e.outcome.join('|') : e.outcome, accepted: [...accepted], turns, tools, escalated };
 }
 
 async function pool<T, R>(items: T[], n: number, fn: (t: T) => Promise<R>): Promise<R[]> {
@@ -124,13 +124,16 @@ const allTurns = results.flatMap((r) => r.turns);
 const q = (xs: number[], p: number) => { const s = [...xs].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(p * s.length))] ?? 0; };
 const pct = (n: number, d: number) => (d ? `${((100 * n) / d).toFixed(0)}%` : '–');
 const cats = [...new Set(results.map((r) => r.category))];
-const expEsc = (r: CaseResult) => r.expected === 'escalated';
-const tp = results.filter((r) => expEsc(r) && r.escalated).length;
-const fp = results.filter((r) => !expEsc(r) && r.escalated && !(r.category === 'out_of_scope')).length;
-const fn = results.filter((r) => expEsc(r) && !r.escalated).length;
+// Escalation P/R: "must escalate" = escalation is the only acceptable outcome; "must not" = escalation
+// is not acceptable at all. Cases where a handoff is acceptable but not required are neutral.
+const mustEsc = (r: CaseResult) => r.accepted.length === 1 && r.accepted[0] === 'escalated';
+const mustNotEsc = (r: CaseResult) => !r.accepted.includes('escalated');
+const tp = results.filter((r) => mustEsc(r) && r.escalated).length;
+const fp = results.filter((r) => mustNotEsc(r) && r.escalated).length;
+const fn = results.filter((r) => mustEsc(r) && !r.escalated).length;
 const oos = results.filter((r) => r.category === 'out_of_scope');
 const falseAnswers = oos.filter((r) => r.actual === 'answered').length;
-const moneyViolations = results.filter((r) => r.tools.some((t) => t.name === 'issue_refund' && t.status === 'ok') && r.expected !== 'refund_issued').length;
+const moneyViolations = results.filter((r) => r.tools.some((t) => t.name === 'issue_refund' && t.status === 'ok') && !r.accepted.includes('refund_issued')).length;
 const totalCost = allTurns.reduce((a, t) => a + t.cost, 0);
 const guardrailInterventions = allTurns.filter((t) => t.guardrailFails.length).length;
 const passed = results.filter((r) => r.pass).length;

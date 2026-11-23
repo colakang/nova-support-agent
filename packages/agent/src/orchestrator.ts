@@ -10,6 +10,7 @@
 //     enforced by code: the model is told, and validation refuses to release until a ticket exists
 import { z } from 'zod';
 import type { AgentEvent, AgentEventInput, ChatMessage, Mode, SessionFacts, SessionState, TurnTrace } from '@sa/shared';
+import { redactPins } from '@sa/shared';
 import { RetrievalUnavailableError, type Retriever } from '@sa/rag';
 import {
   type CustomerDirectory, FRUSTRATION_ESCALATE_AT, LEGAL_RE, MAX_VERIFY_FAILURES, type RefundLedger, TOOL_LABELS, TOOL_SPECS,
@@ -19,6 +20,7 @@ import { type ChaosOnce, type FunctionTool, type InputItem, LlmError, type Servi
 import { RESPOND_TOOL, SYSTEM_PROMPT, sessionContext } from './prompts';
 import { JUDGE_INSTRUCTIONS, JUDGE_SCHEMA, type RespondArgs, type Violation, toCitation, validateRespond } from './guardrails';
 import { TurnRecorder, newId } from './trace';
+import { MODERATION_REPLY, type ModerationVerdict, moderate } from './moderation';
 import { type BudgetGuard, BudgetExceededError, type SessionStore } from './store';
 
 export interface AgentConfig {
@@ -83,7 +85,7 @@ const RespondSchema = z.object({
 
 const HUMAN_RE = /\b(speak|talk|chat|connect|transfer|escalate)\b.{0,25}\b(human|person|someone|representative|manager|supervisor|real agent)\b|\breal (person|human)\b|\bhuman (agent|being|please)\b/i;
 
-const redact = (s: string) => s.replace(/(pin\D{0,12})(\d{4})\b/gi, '$1••••');
+const redact = redactPins;
 const redactArgs = (a: unknown) => (a && typeof a === 'object' && 'pin' in a ? { ...(a as object), pin: '••••' } : a);
 
 const FRIENDLY: Record<string, string> = {
@@ -129,9 +131,10 @@ export async function runTurn(req: TurnRequest, deps: AgentDeps): Promise<TurnRe
   const session = await deps.store.get(req.sessionId);
   if (!session) throw new Error(`session ${req.sessionId} not found`);
 
-  const userMsg: ChatMessage = { id: newId('msg'), role: 'user', mode: req.mode, content: req.text, at: startedAt, turnId };
+  // Persist/trace the redacted text; only this turn's model input sees the raw PIN.
+  const userMsg: ChatMessage = { id: newId('msg'), role: 'user', mode: req.mode, content: redactPins(req.text), at: startedAt, turnId };
   const last = session.messages.at(-1);
-  const isRetry = last?.role === 'user' && last.content.trim() === req.text.trim();
+  const isRetry = last?.role === 'user' && last.content.trim() === userMsg.content.trim();
   if (persist && !isRetry) await deps.store.appendMessage(req.sessionId, userMsg);
   emit({ type: 'turn.started', mode: req.mode, userMessage: userMsg });
 
@@ -167,7 +170,7 @@ export async function runTurn(req: TurnRequest, deps: AgentDeps): Promise<TurnRe
 
   // ---- conversation input
   const history = session.messages.filter((m) => m.turnId !== turnId).slice(-cfg.historyMessages);
-  if (history.at(-1)?.role === 'user' && history.at(-1)!.content.trim() === req.text.trim()) history.pop();
+  if (history.at(-1)?.role === 'user' && history.at(-1)!.content.trim() === userMsg.content.trim()) history.pop();
   const input: InputItem[] = [
     { role: 'developer', content: sessionContext({ facts, state, mode: req.mode, now: ctx.now, forced }) },
     ...history.map((m) => ({ role: m.role, content: m.interrupted ? `${m.content} [cut off: customer interrupted]` : m.content }) as InputItem),
@@ -267,8 +270,26 @@ export async function runTurn(req: TurnRequest, deps: AgentDeps): Promise<TurnRe
     }
   };
 
+  // Moderation runs in parallel with the first LLM call; awaited before any tool or answer.
+  let moderation: Promise<ModerationVerdict> | null = null;
+  let moderationChecked = false;
+  const gateModeration = async (): Promise<boolean> => {
+    if (moderationChecked || !moderation) return false;
+    moderationChecked = true;
+    const v = await moderation;
+    rec.start('moderation', 'guardrail').end({ status: v.action === 'allow' ? 'ok' : 'error', attrs: { ...v } });
+    if (v.action === 'allow') {
+      if (v.flagged.length || v.error) emit({ type: 'guardrail', check: 'moderation', decision: 'warn', detail: v.error ? `Moderation unavailable (fail open): ${v.error}` : `Flagged but allowed: ${v.flagged.join(', ')}` });
+      return false;
+    }
+    emit({ type: 'guardrail', check: 'moderation', decision: 'fail', detail: `Blocked before any tool ran: ${v.flagged.join(', ')}` });
+    final = { args: { answer: MODERATION_REPLY[v.action], kind: 'decline', citations: [], customer_sentiment: 'neutral' }, citations: [] };
+    return true;
+  };
+
   try {
     await deps.budget.check(req.sessionId);
+    moderation = moderate(req.text, req.signal);
 
     for (let step = 0; step < cfg.maxSteps && !final; step++) {
       if (req.signal?.aborted) throw new LlmError('aborted', 'aborted', 0);
@@ -305,6 +326,7 @@ export async function runTurn(req: TurnRequest, deps: AgentDeps): Promise<TurnRe
       });
       emit({ type: 'step.completed', stepId, name: 'llm', status: 'ok', summary: `${res.model}${res.serviceTier === 'flex' ? ' (flex)' : ''} → ${res.calls.map((c) => c.name).join(', ') || 'text'}`, durationMs: Math.round(performance.now() - t0) });
 
+      if (await gateModeration()) break;
       if (!res.calls.length) {
         input.push({ role: 'developer', content: 'You must reply by calling the respond tool.' });
         continue;

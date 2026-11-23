@@ -5,7 +5,7 @@ import { getConnInfo } from '@hono/node-server/conninfo';
 import type postgres from 'postgres';
 import { z } from 'zod';
 import { type AgentDeps, newId, runTurn } from '@sa/agent';
-import { ChaosFlags, CreateTurnBody, VoiceTranscriptBody, VoiceUsageBody, realtimeCost, TRANSCRIBE_PER_MIN, type AgentEvent, type TurnTrace } from '@sa/shared';
+import { ChaosFlags, CreateTurnBody, VoiceTranscriptBody, VoiceUsageBody, realtimeCost, redactPins, TRANSCRIBE_PER_MIN, type AgentEvent, type TurnTrace } from '@sa/shared';
 import { dataPath } from '@sa/shared/env';
 import { readFileSync } from 'node:fs';
 import type { Config } from './config';
@@ -122,7 +122,7 @@ export function buildApp({ cfg, sql, store, budget, agent }: AppDeps) {
     const id = c.req.param('id');
     const b = VoiceTranscriptBody.parse(await c.req.json());
     if (!(await store.get(id))) return c.json({ error: 'not_found' }, 404);
-    const msg = { id: newId('msg'), role: b.role, mode: 'voice' as const, content: b.text, at: Date.now(), ...(b.interrupted ? { interrupted: true } : {}) };
+    const msg = { id: newId('msg'), role: b.role, mode: 'voice' as const, content: redactPins(b.text), at: Date.now(), ...(b.interrupted ? { interrupted: true } : {}) };
     await store.appendMessage(id, msg);
     return c.json(msg, 201);
   });
