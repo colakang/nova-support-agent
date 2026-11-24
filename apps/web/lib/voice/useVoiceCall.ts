@@ -618,13 +618,8 @@ export function useVoiceCall(options: UseVoiceCallOptions) {
       console.info(`[voice] ${st}`);
     };
     try {
-      step('token');
-      const tok = await api.voiceToken(sessionId);
-      if (ctx.ended) return;
-      ctx.model = tok.model;
-      ctx.maxSeconds = tok.maxSessionSeconds;
-      setMaxSeconds(tok.maxSessionSeconds);
-
+      // Microphone FIRST, token second: the ephemeral token lives ~2 minutes, and a first-time
+      // permission prompt (browser + macOS) can easily take longer than that → OpenAI 401.
       let ms: MediaStream;
       step('mic'); // no timeout here: the user may take a while to click "Allow"
       try {
@@ -644,6 +639,13 @@ export function useVoiceCall(options: UseVoiceCallOptions) {
       micAnalyser.fftSize = 1024;
       audioCtx.createMediaStreamSource(ms).connect(micAnalyser);
       analysersRef.current.mic = micAnalyser;
+
+      step('token');
+      let tok = await api.voiceToken(sessionId);
+      if (ctx.ended) return;
+      ctx.model = tok.model;
+      ctx.maxSeconds = tok.maxSessionSeconds;
+      setMaxSeconds(tok.maxSessionSeconds);
 
       const pc = new RTCPeerConnection();
       ctx.pc = pc;
@@ -719,15 +721,24 @@ export function useVoiceCall(options: UseVoiceCallOptions) {
       }, CONNECT_TIMEOUT_MS);
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      let r: Response;
-      try {
-        r = await fetch(REALTIME_CALLS_URL, {
-          method: 'POST',
-          body: offer.sdp ?? '',
-          headers: { Authorization: `Bearer ${tok.clientSecret}`, 'Content-Type': 'application/sdp' },
-        });
-      } catch {
-        throw new CallFailure('network', 'Couldn’t reach the voice service.');
+      const postOffer = async (secret: string): Promise<Response> => {
+        try {
+          return await fetch(REALTIME_CALLS_URL, {
+            method: 'POST',
+            body: offer.sdp ?? '',
+            headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/sdp' },
+          });
+        } catch {
+          throw new CallFailure('network', 'Couldn’t reach the voice service.');
+        }
+      };
+      let r = await postOffer(tok.clientSecret);
+      if (r.status === 401 && !ctx.ended) {
+        // Expired or rejected ephemeral secret: mint a fresh one and try exactly once more.
+        console.warn('[voice] realtime 401, retrying with a fresh token');
+        tok = await api.voiceToken(sessionId);
+        if (ctx.ended) return;
+        r = await postOffer(tok.clientSecret);
       }
       if (!r.ok) throw new CallFailure('webrtc', `The voice service refused the call (HTTP ${r.status}). Try again in a moment.`);
       const sdp = await r.text();
