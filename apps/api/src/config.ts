@@ -12,7 +12,7 @@ export function loadConfig() {
     sessionBudgetUsd: envNum('SESSION_BUDGET_USD', 0.4),
     turnsPerMin: envNum('RATE_LIMIT_TURNS_PER_MIN', 12),
     sessionsPerHour: envNum('RATE_LIMIT_SESSIONS_PER_HOUR', 20),
-    voicePerHour: envNum('RATE_LIMIT_VOICE_PER_HOUR', 8),
+    voicePerHour: envNum('RATE_LIMIT_VOICE_PER_HOUR', 30),
     realtime: {
       model: process.env.REALTIME_MODEL ?? 'gpt-realtime-2.1',
       voice: process.env.REALTIME_VOICE ?? 'marin',

@@ -740,7 +740,17 @@ export function useVoiceCall(options: UseVoiceCallOptions) {
         if (ctx.ended) return;
         r = await postOffer(tok.clientSecret);
       }
-      if (!r.ok) throw new CallFailure('webrtc', `The voice service refused the call (HTTP ${r.status}). Try again in a moment.`);
+      if (!r.ok) {
+        // Surface the provider's own reason (e.g. "Incorrect API key provided") instead of a bare status.
+        let reason = '';
+        try {
+          reason = ((JSON.parse(await r.text()) as { error?: { message?: string } }).error?.message ?? '').slice(0, 140);
+        } catch {
+          /* not JSON */
+        }
+        console.warn('[voice] realtime call refused', r.status, reason);
+        throw new CallFailure('webrtc', `The voice service refused the call (HTTP ${r.status}${reason ? `: ${reason}` : ''}). Try again in a moment.`);
+      }
       const sdp = await r.text();
       if (ctx.ended) return;
       await pc.setRemoteDescription({ type: 'answer', sdp });
