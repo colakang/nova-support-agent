@@ -32,6 +32,15 @@ export class ApiError extends Error {
   }
 }
 
+export interface DemoInvoice {
+  id: string;
+  amount: number;
+  date: string;
+  description: string;
+  status: 'paid' | 'refunded' | 'open';
+  refund: 'refundable' | 'needs_human' | 'not_eligible';
+  note: string;
+}
 export interface DemoCustomer {
   customerId: string;
   name: string;
@@ -39,6 +48,7 @@ export interface DemoCustomer {
   pin: string;
   tier: Tier;
   try: string;
+  invoices?: DemoInvoice[];
 }
 export interface DemoInfo {
   customers: DemoCustomer[];

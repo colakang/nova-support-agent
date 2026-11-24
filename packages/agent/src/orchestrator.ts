@@ -14,7 +14,7 @@ import { classifyConfirmation, redactPins } from '@sa/shared';
 import { RetrievalUnavailableError, type Retriever } from '@sa/rag';
 import {
   type CustomerDirectory, FRUSTRATION_ESCALATE_AT, LEGAL_RE, MAX_VERIFY_FAILURES, PENDING_ACTION_TTL_MS, type RefundLedger, TOOL_LABELS, TOOL_SPECS,
-  type ToolContext, ToolFailure, type ToolName, type ToolOutcome, availableTools, executeTool, newTurnState,
+  type ToolContext, ToolFailure, type ToolName, type ToolOutcome, availableTools, executeTool, newTurnState, overlay,
 } from '@sa/tools';
 import { type ChaosOnce, type FunctionTool, type InputItem, LlmError, type ServiceTier, callLlm } from './llm';
 import { RESPOND_TOOL, SYSTEM_PROMPT, sessionContext } from './prompts';
@@ -189,11 +189,20 @@ export async function runTurn(req: TurnRequest, deps: AgentDeps): Promise<TurnRe
   }
   if (requiredTicket) emit({ type: 'guardrail', check: 'escalation_policy', decision: 'escalate', detail: `Rule triggered: ${requiredTicket.replace(/_/g, ' ')}` });
 
+  const customerInvoices = () => {
+    const rec = facts.customer ? deps.customers.get(facts.customer.id) : undefined;
+    if (!rec) return undefined;
+    return overlay(rec, facts, ctx.now).invoices
+      .slice()
+      .sort((a, b) => a.days_ago - b.days_ago)
+      .map((i) => ({ id: i.id, date: i.date, amount: i.amount, description: i.description, status: i.status }));
+  };
+
   // ---- conversation input
   const history = session.messages.filter((m) => m.turnId !== turnId).slice(-cfg.historyMessages);
   if (history.at(-1)?.role === 'user' && history.at(-1)!.content.trim() === userMsg.content.trim()) history.pop();
   const input: InputItem[] = [
-    { role: 'developer', content: sessionContext({ facts, state, mode: req.mode, now: ctx.now, forced, confirmation, declined: pending && confirmation === 'decline' ? pending.summary : null }) },
+    { role: 'developer', content: sessionContext({ facts, state, mode: req.mode, now: ctx.now, forced, confirmation, declined: pending && confirmation === 'decline' ? pending.summary : null, invoices: customerInvoices() }) },
     ...history.map((m) => ({ role: m.role, content: m.interrupted ? `${m.content} [cut off: customer interrupted]` : m.content }) as InputItem),
     { role: 'user', content: req.text },
   ];

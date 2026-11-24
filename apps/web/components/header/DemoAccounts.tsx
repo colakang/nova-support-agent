@@ -1,10 +1,16 @@
 'use client';
-import { CornerDownLeft, Users } from 'lucide-react';
+import { CornerDownLeft, Receipt, Users } from 'lucide-react';
 import type { DemoCustomer } from '@/lib/api';
 import { humanize } from '@/lib/format';
-import { Badge, Popover } from '@/components/ui/primitives';
+import { Badge, Popover, cx } from '@/components/ui/primitives';
 
 const TIER_TONE = { starter: 'neutral', pro: 'accent', enterprise: 'esc' } as const;
+const REFUND_STYLE = {
+  refundable: 'border-ok/40 bg-ok-soft text-ok-ink',
+  needs_human: 'border-esc/40 bg-esc-soft text-esc-ink',
+  not_eligible: 'border-line bg-surface-2 text-muted',
+} as const;
+const REFUND_WORD = { refundable: 'refundable', needs_human: 'needs human', not_eligible: 'not refundable' } as const;
 
 export function DemoAccounts({ customers, onPick, inCall }: { customers: DemoCustomer[]; onPick: (text: string) => void; inCall: boolean }) {
   return (
@@ -23,7 +29,7 @@ export function DemoAccounts({ customers, onPick, inCall }: { customers: DemoCus
           <div className="border-b border-line px-4 py-3">
             <h2 className="text-sm font-semibold text-fg">Demo accounts</h2>
             <p className="mt-0.5 text-xs text-muted">
-              Fake customers for trying account actions. {inCall ? 'In a call, read the email and PIN out to Nova.' : 'Click one to put “email, PIN” in the composer.'}
+              Fake customers for trying account actions. {inCall ? 'In a call, read the email and PIN out to Nova.' : 'Click a name to put “email, PIN” in the composer; click an invoice to ask for its refund.'}
             </p>
           </div>
           <ul className="scroll-thin min-h-0 flex-1 divide-y divide-line overflow-y-auto">
@@ -52,6 +58,26 @@ export function DemoAccounts({ customers, onPick, inCall }: { customers: DemoCus
                   </div>
                   <p className="mt-1 text-xs leading-snug text-muted">{c.try}</p>
                 </button>
+                {c.invoices?.length ? (
+                  <div className="flex flex-wrap gap-1.5 px-4 pb-2.5" aria-label={`${c.name}'s invoices`}>
+                    {c.invoices.map((inv) => (
+                      <button
+                        key={inv.id}
+                        type="button"
+                        disabled={inCall}
+                        title={`${inv.description} · charged ${inv.date} · ${inv.status} · ${inv.note}`}
+                        onClick={() => {
+                          onPick(`Please refund invoice ${inv.id}.`);
+                          close();
+                        }}
+                        className={cx('inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-[11px] transition hover:brightness-95 disabled:cursor-default', REFUND_STYLE[inv.refund])}
+                      >
+                        <Receipt aria-hidden className="size-3" />
+                        {inv.id} · ${inv.amount} · {inv.date.slice(5)} · {REFUND_WORD[inv.refund]}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
               </li>
             ))}
           </ul>

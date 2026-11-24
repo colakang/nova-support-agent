@@ -5,8 +5,9 @@ import { getConnInfo } from '@hono/node-server/conninfo';
 import type postgres from 'postgres';
 import { z } from 'zod';
 import { type AgentDeps, newId, runTurn } from '@sa/agent';
-import { ChaosFlags, CreateTurnBody, VoiceTranscriptBody, VoiceUsageBody, realtimeCost, redactPins, TRANSCRIBE_PER_MIN, type AgentEvent, type TurnTrace } from '@sa/shared';
+import { emptyFacts, ChaosFlags, CreateTurnBody, VoiceTranscriptBody, VoiceUsageBody, realtimeCost, redactPins, TRANSCRIBE_PER_MIN, type AgentEvent, type TurnTrace } from '@sa/shared';
 import { dataPath } from '@sa/shared/env';
+import { overlay, refundDecision } from '@sa/tools';
 import { readFileSync } from 'node:fs';
 import type { Config } from './config';
 import type { pgBudget, pgStore } from './db';
@@ -55,7 +56,27 @@ export function buildApp({ cfg, sql, store, budget, agent }: AppDeps) {
     return c.json({ ok: true, chunks: r?.n ?? 0, corpusVersion: r?.v ?? null, models: { agent: agent.config.agentModel, fallback: agent.config.fallbackModel, judge: agent.config.judgeModel, realtime: cfg.realtime.model } });
   });
 
-  app.get('/api/demo', (c) => c.json({ customers: demoHints, thresholds: cfg.thresholds }));
+  // Demo accounts with their invoices. The "refund" verdict per invoice comes from the same
+  // refundDecision() the agent's tools use, so the hints can't drift from the real behaviour.
+  app.get('/api/demo', (c) => {
+    const now = Date.now();
+    const customers = (demoHints as Array<{ customerId: string }>).map((h) => {
+      const rec = agent.customers.get(h.customerId);
+      if (!rec) return h;
+      const o = overlay(rec, emptyFacts(), now);
+      return {
+        ...h,
+        invoices: o.invoices.map((inv) => {
+          const d = refundDecision(o, inv.id);
+          const verdict = d.kind === 'eligible' ? 'refundable' : d.kind === 'needs_human' ? 'needs_human' : 'not_eligible';
+          const rule = d.rule.replace(/_/g, ' ');
+          const note = d.kind === 'eligible' ? 'refundable now (USD ' + d.amount.toFixed(2) + ')' : d.kind === 'needs_human' ? 'needs human approval: ' + rule : 'not refundable: ' + rule;
+          return { id: inv.id, amount: inv.amount, date: inv.date, description: inv.description, status: inv.status, refund: verdict, note };
+        }),
+      };
+    });
+    return c.json({ customers, thresholds: cfg.thresholds });
+  });
 
   app.get('/api/budget', async (c) => c.json({ todayUsd: await budget.today(), dailyCapUsd: cfg.dailyBudgetUsd, sessionCapUsd: cfg.sessionBudgetUsd }));
 

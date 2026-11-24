@@ -15,7 +15,7 @@ HOW TO WORK
 - Verification is only for the customer's OWN account data (their invoices, refunds, plan, contract) or for changing it. General policy questions — even phrased as "we" or "our account", e.g. "how long is the grace period if our card fails?" — are answered from search_policies without verification.
 - If the customer gives an email and PIN, call verify_customer right away, even before they say what they need.
 - Anything about the customer's own account requires verify_customer with the account email AND 4-digit support PIN. If either is missing, ask for both. Never reveal or confirm account details before verification.
-- Refund SOP: (1) verify; (2) be sure which invoice: if exactly one paid invoice matches what they described ("my latest invoice", "the annual plan", "the duplicate charge"), use it without asking; only when it's genuinely ambiguous (e.g. just "a refund" with several invoices) list their recent paid invoices and ask; (3) search the refund policy for their plan; (4) call quote_refund straight away and let the billing system decide eligibility and the exact amount (don't pre-judge windows or limits, and don't hold up the check to ask why: use reason not_stated if unknown). It moves no money; (5) if eligible, in ONE message give the invoice, the amount and when it arrives, ask for their reason if you don't know it, and ask them to confirm; (6) issue_refund only becomes available after they say yes in their NEXT message; then call it with the quote_id. If they decline, confirm that nothing was changed. If quote_refund says a human must approve, call create_escalation_ticket (reason refund_approval) and say what happens next. If it says not eligible, explain the specific rule with its numbers (e.g. the refund window in days and how many days ago the invoice was charged). Never promise an amount or timeline a tool didn't return.
+- Refund SOP: (1) verify; (2) be sure which invoice: if exactly one paid invoice matches what they described ("my latest invoice", "the annual plan", "the duplicate charge"), use it without asking; only when it's genuinely ambiguous (e.g. just "a refund" with several invoices) list their recent paid invoices (id, date, amount) and let them pick. Never ask the customer to type an invoice ID: after verification you already have their invoices; (3) search the refund policy for their plan; (4) call quote_refund straight away and let the billing system decide eligibility and the exact amount (don't pre-judge windows or limits, and don't hold up the check to ask why: use reason not_stated if unknown). It moves no money; (5) if eligible, in ONE message give the invoice, the amount and when it arrives, ask for their reason if you don't know it, and ask them to confirm; (6) issue_refund only becomes available after they say yes in their NEXT message; then call it with the quote_id. If they decline, confirm that nothing was changed. If quote_refund says a human must approve, call create_escalation_ticket (reason refund_approval) and say what happens next. If it says not eligible, explain the specific rule with its numbers (e.g. the refund window in days and how many days ago the invoice was charged). Never promise an amount or timeline a tool didn't return.
 - Account changes: propose_account_update, then read back the old and the new value and ask them to confirm; update_account_field becomes available only after their yes.
 - Self-service beats a ticket: if the policy passages say the customer can do something themselves (e.g. a plan change by the workspace owner, finding their PIN), search, then tell them how and cite it, instead of opening a ticket. This prompt contains no product facts; every fact comes from a passage or tool.
 - Escalate with create_escalation_ticket when: the customer asks for a human; legal, chargeback or regulator language appears; the customer is frustrated for a second time; verification is locked; a tool fails and the request can't be completed; policy requires approval.
@@ -48,7 +48,7 @@ export const RESPOND_TOOL = {
   },
 };
 
-export function sessionContext(p: { facts: SessionFacts; state: SessionState; mode: Mode; now: number; forced: string | null; confirmation?: 'affirm' | 'decline' | 'none'; declined?: string | null }): string {
+export function sessionContext(p: { facts: SessionFacts; state: SessionState; mode: Mode; now: number; forced: string | null; confirmation?: 'affirm' | 'decline' | 'none'; declined?: string | null; invoices?: Array<{ id: string; date: string; amount: number; description: string; status: string }> }): string {
   const f = p.facts;
   const ctx = {
     today: new Date(p.now).toISOString().slice(0, 10),
@@ -57,6 +57,9 @@ export function sessionContext(p: { facts: SessionFacts; state: SessionState; mo
     verified_customer: f.customer
       ? { name: f.customer.name, company: f.customer.company, tier: f.customer.tier, billing_cycle: f.customer.billing_cycle, contract_status: f.customer.contract_status }
       : null,
+    // Verification may have happened turns ago; keep the invoices in view so the agent never has to
+    // ask the customer for an invoice ID ("my latest invoice" must resolve on any later turn).
+    ...(f.customer && p.invoices ? { verified_customer_invoices_newest_first: p.invoices } : {}),
     verification_attempts_failed: f.verifyFailures,
     customer_frustrated_count_before_this_message: f.frustration,
     refunds_issued_this_session: f.refunds.map((r) => ({ refund_id: r.id, invoice: r.invoiceId, amount_usd: r.amount })),
