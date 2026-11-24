@@ -10,7 +10,7 @@ import type { GuardrailEvent } from '@/lib/turnActivity';
 import { Header } from './header/Header';
 import { Composer, type ComposerHandle } from './chat/Composer';
 import { MessageList } from './chat/MessageList';
-import { EmptyState, EscalationBanner, FactsStrip } from './chat/SessionBits';
+import { EmptyState, EscalationBanner, FactsStrip, PendingActionBar, CONFIRM_TEXT, CANCEL_TEXT } from './chat/SessionBits';
 import { VoicePanel } from './voice/VoicePanel';
 import { ObservabilityDrawer } from './observability/ObservabilityDrawer';
 import { Toaster } from './ui/Toaster';
@@ -177,6 +177,7 @@ function ConsoleInner() {
           ) : (
             <BootState status={s.status} error={s.initError} onRetry={() => void s.boot()} />
           )}
+          <PendingActionBar session={s.session} busy={s.busy} voice={mode === 'voice'} onConfirm={() => send(CONFIRM_TEXT)} onCancel={() => send(CANCEL_TEXT)} />
           {mode === 'text' ? (
             <Composer ref={composerRef} value={draft} onChange={setDraft} onSend={() => send(draft)} busy={s.busy} disabled={!ready} />
           ) : (

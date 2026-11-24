@@ -5,22 +5,26 @@
 // The LLM-facing schemas are `strict` so the model cannot add or omit fields.
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
-import type { ChaosFlags, SessionFacts, Ticket, Tier } from '@sa/shared';
+import type { ChaosFlags, PendingAction, SessionFacts, Ticket, Tier } from '@sa/shared';
 import { type RetrievalResult, type RetrievedChunk, type Retriever, RetrievalUnavailableError } from '@sa/rag';
 import { type CustomerDirectory, overlay, toView } from './customers';
 import type { RefundLedger } from './ledger';
 import {
-  ACCOUNT_VERIFY_FAILURES_PER_HOUR, AGENT_REFUNDS_PER_30_DAYS, DUPLICATE_CHARGE_AGENT_LIMIT_USD, MAX_VERIFY_FAILURES, PLAN_PRICES,
+  ACCOUNT_VERIFY_FAILURES_PER_HOUR, AGENT_REFUNDS_PER_30_DAYS, PENDING_ACTION_TTL_MS, DUPLICATE_CHARGE_AGENT_LIMIT_USD, MAX_VERIFY_FAILURES, PLAN_PRICES,
   PRO_ANNUAL_PRORATION_WINDOW_DAYS, REFUND_RULES, UPDATABLE_FIELDS,
 } from './policy';
 
-export type ToolName = 'verify_customer' | 'search_policies' | 'issue_refund' | 'update_account_field' | 'create_escalation_ticket';
+export type ToolName =
+  | 'verify_customer' | 'search_policies' | 'quote_refund' | 'issue_refund'
+  | 'propose_account_update' | 'update_account_field' | 'create_escalation_ticket';
 
 export const TOOL_LABELS: Record<ToolName, string> = {
   verify_customer: 'Verifying identity & account tier',
   search_policies: 'Searching knowledge base',
-  issue_refund: 'Processing refund',
-  update_account_field: 'Updating account',
+  quote_refund: 'Checking refund eligibility & amount',
+  issue_refund: 'Processing confirmed refund',
+  propose_account_update: 'Preparing account change',
+  update_account_field: 'Applying confirmed account change',
   create_escalation_ticket: 'Creating ticket for a human specialist',
 };
 
@@ -54,6 +58,10 @@ export interface ToolContext {
   chaos: ChaosFlags;
   now: number;
   signal?: AbortSignal;
+  /** Current turn id: a pending action created in THIS turn can't be executed in this turn. */
+  turnId: string;
+  /** Code's reading of the customer's latest message against the pending action. */
+  confirmation: 'affirm' | 'decline' | 'none';
 }
 
 export interface ToolOutcome {
@@ -86,17 +94,25 @@ export const TOOL_SPECS: Record<ToolName, { description: string; parameters: obj
     description: "Search Northstar's support knowledge base (policies, pricing, troubleshooting). Results are filtered to the verified customer's plan. Returns passages with chunk ids to cite and a confidence level.",
     parameters: obj({ query: { type: 'string', description: 'Self-contained search query, e.g. "refund window for Pro monthly plan"' } }),
   },
-  issue_refund: {
-    description: 'Refund a specific invoice for the verified customer. Policy limits are enforced by the billing system; if a human must approve, the result says so.',
+  quote_refund: {
+    description: 'Step 1 of a refund. Checks eligibility and computes the exact amount for one invoice of the verified customer. Moves NO money. Creates a quote the customer must explicitly confirm in their NEXT message; present it (invoice, amount, timing) and ask for confirmation.',
     parameters: obj({
       invoice_id: { type: 'string' },
-      amount: { type: ['number', 'null'], description: 'Amount in USD, or null for the full eligible amount' },
-      reason: { type: 'string', enum: ['duplicate_charge', 'unused_service', 'charged_after_cancellation', 'billing_error', 'other'] },
+      reason: { type: 'string', enum: ['duplicate_charge', 'unused_service', 'charged_after_cancellation', 'billing_error', 'other', 'not_stated'] },
+      reason_detail: { type: 'string', description: "The customer's reason in their own words, or empty if they haven't said" },
     }),
   },
-  update_account_field: {
-    description: `Update one account field for the verified customer. Allowed: ${UPDATABLE_FIELDS.join(', ')}.`,
+  issue_refund: {
+    description: 'Step 2 of a refund: execute the quote the customer has explicitly confirmed. Only available after their confirmation; the amount is the quoted amount.',
+    parameters: obj({ quote_id: { type: 'string' }, reason_detail: { type: 'string', description: 'The reason, if the customer gave it only when confirming; otherwise empty' } }),
+  },
+  propose_account_update: {
+    description: `Step 1 of an account change for the verified customer (allowed: ${UPDATABLE_FIELDS.join(', ')}). Changes nothing; creates a proposal the customer must confirm in their next message.`,
     parameters: obj({ field: { type: 'string' }, value: { type: 'string' } }),
+  },
+  update_account_field: {
+    description: 'Step 2 of an account change: apply the proposal the customer has explicitly confirmed.',
+    parameters: obj({ proposal_id: { type: 'string' } }),
   },
   create_escalation_ticket: {
     description: 'Hand the conversation to a human specialist with a structured ticket. Use when policy requires approval, the customer asks for a human, legal/chargeback language appears, the customer is frustrated twice, or you cannot answer confidently.',
@@ -110,15 +126,24 @@ export const TOOL_SPECS: Record<ToolName, { description: string; parameters: obj
 
 // ---------------------------------------------------------------- gating: which tools exist right now
 
-/** Tools are exposed by state, not by prompt. An unverified session literally cannot call issue_refund. */
-export function availableTools(ctx: Pick<ToolContext, 'facts' | 'consultedDocs'>): ToolName[] {
+/** A pending action may run only if it was shown in an EARLIER turn and the customer just said yes. */
+export function confirmable(ctx: Pick<ToolContext, 'facts' | 'turnId' | 'confirmation' | 'now'>, kind: PendingAction['kind']): boolean {
+  const p = ctx.facts.pendingAction;
+  return !!p && p.kind === kind && p.createdTurnId !== ctx.turnId && ctx.confirmation === 'affirm' && ctx.now - p.createdAt <= PENDING_ACTION_TTL_MS;
+}
+
+/** Tools are exposed by state, not by prompt. An unverified session literally cannot quote a refund,
+ *  and nobody can execute one without a confirmed quote from a previous turn. */
+export function availableTools(ctx: Pick<ToolContext, 'facts' | 'consultedDocs' | 'turnId' | 'confirmation' | 'now'>): ToolName[] {
   const tools: ToolName[] = ['search_policies', 'create_escalation_ticket'];
   if (!ctx.facts.customer) {
     if (ctx.facts.verifyFailures < MAX_VERIFY_FAILURES) tools.unshift('verify_customer');
     return tools;
   }
-  tools.push('update_account_field');
-  if (ctx.consultedDocs.has('refund-policy')) tools.push('issue_refund');
+  tools.push('propose_account_update');
+  if (ctx.consultedDocs.has('refund-policy')) tools.push('quote_refund');
+  if (confirmable(ctx, 'refund')) tools.push('issue_refund');
+  if (confirmable(ctx, 'account_update')) tools.push('update_account_field');
   return tools;
 }
 
@@ -221,11 +246,12 @@ async function searchPolicies(raw: unknown, ctx: ToolContext): Promise<ToolOutco
   };
 }
 
-const RefundArgs = z.object({
+const QuoteArgs = z.object({
   invoice_id: z.string().trim().toUpperCase(),
-  amount: z.number().positive().max(100_000).nullable(),
-  reason: z.enum(['duplicate_charge', 'unused_service', 'charged_after_cancellation', 'billing_error', 'other']),
+  reason: z.enum(['duplicate_charge', 'unused_service', 'charged_after_cancellation', 'billing_error', 'other', 'not_stated']),
+  reason_detail: z.string().trim().max(300),
 });
+const IssueArgs = z.object({ quote_id: z.string().trim().toUpperCase(), reason_detail: z.string().trim().max(300).default('') });
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -269,8 +295,8 @@ export function refundDecision(o: ReturnType<typeof overlay>, invoiceId: string)
   return { kind: 'eligible', amount, limit, rule };
 }
 
-async function issueRefund(raw: unknown, ctx: ToolContext): Promise<ToolOutcome> {
-  const a = RefundArgs.parse(raw);
+async function quoteRefund(raw: unknown, ctx: ToolContext): Promise<ToolOutcome> {
+  const a = QuoteArgs.parse(raw);
   const cust = ctx.facts.customer;
   if (!cust) return { status: 'blocked', summary: 'Not verified', data: { error: 'customer_not_verified' } };
   if (!ctx.consultedDocs.has('refund-policy')) {
@@ -295,25 +321,61 @@ async function issueRefund(raw: unknown, ctx: ToolContext): Promise<ToolOutcome>
       requiresHuman: 'refund_approval',
     };
   }
-  if (a.amount !== null && a.amount > d.amount + 0.001) {
-    return { status: 'blocked', summary: `Requested $${a.amount} > eligible $${d.amount}`, data: { refunded: false, error: 'amount_exceeds_eligible', eligible_amount_usd: d.amount } };
-  }
-  const amount = a.amount ?? d.amount;
-  // ---- commit point: after this line the money has moved; aborts and retries must not redo it.
-  const res = await ctx.ledger.commit({ key: `${ctx.sessionId}:${a.invoice_id}`, sessionId: ctx.sessionId, customerId: cust.id, invoiceId: a.invoice_id, amount, refundId: id('RF') });
-  if (res.created) ctx.facts.refunds.push({ id: res.refundId, invoiceId: a.invoice_id, amount: res.amount, reason: a.reason, at: ctx.now });
-  ctx.turn.refundCommitted = true;
+  const inv = o.invoices.find((i) => i.id === a.invoice_id)!;
+  const quote: PendingAction = {
+    id: id('Q'),
+    kind: 'refund',
+    summary: `Refund $${d.amount.toFixed(2)} for ${a.invoice_id} (${inv.description}, charged ${inv.date})`,
+    createdTurnId: ctx.turnId,
+    createdAt: ctx.now,
+    refund: { invoiceId: a.invoice_id, amount: d.amount, reason: a.reason, reasonDetail: a.reason_detail, rule: d.rule },
+  };
+  ctx.facts.pendingAction = quote; // replaces any older unconfirmed action
   return {
     status: 'ok',
-    summary: `${res.created ? 'Refunded' : 'Already refunded'} $${res.amount.toFixed(2)} on ${a.invoice_id} (${res.refundId})`,
-    data: { refunded: true, refund_id: res.refundId, invoice_id: a.invoice_id, amount_usd: res.amount, policy_rule: d.rule, arrives: 'original payment method in 5-10 business days', idempotent_replay: !res.created },
+    summary: `Quote ${quote.id}: $${d.amount.toFixed(2)} on ${a.invoice_id}, awaiting customer confirmation`,
+    data: {
+      quote_id: quote.id, invoice_id: a.invoice_id, invoice_date: inv.date, description: inv.description, amount_usd: d.amount, policy_rule: d.rule,
+      arrives: 'original payment method in 5-10 business days', expires_in_minutes: PENDING_ACTION_TTL_MS / 60_000,
+      next_step: `Summarise this for the customer and ask them to confirm${a.reason === 'not_stated' ? ' (and, in the same message, briefly ask why they want the refund)' : ''}. Do NOT call issue_refund in this turn; it unlocks only after they say yes.`,
+    },
   };
 }
 
-const UpdateArgs = z.object({ field: z.string().trim(), value: z.string().trim().min(1).max(200) });
+async function issueRefund(raw: unknown, ctx: ToolContext): Promise<ToolOutcome> {
+  const a = IssueArgs.parse(raw);
+  const cust = ctx.facts.customer;
+  const p = ctx.facts.pendingAction;
+  if (!cust || !p?.refund || p.id !== a.quote_id || !confirmable(ctx, 'refund')) {
+    return { status: 'blocked', summary: 'No confirmed refund quote', data: { refunded: false, error: 'not_confirmed', hint: 'quote_refund, present it, and wait for the customer to confirm' } };
+  }
+  // Re-check policy at commit time (state may have changed since the quote).
+  const rec = ctx.customers.get(cust.id)!;
+  const d = refundDecision(overlay(rec, ctx.facts, ctx.now), p.refund.invoiceId);
+  if (d.kind !== 'eligible' || Math.abs(d.amount - p.refund.amount) > 0.001) {
+    ctx.facts.pendingAction = null;
+    return { status: 'blocked', summary: 'Quote no longer valid', data: { refunded: false, error: 'quote_stale', policy_rule: d.rule } };
+  }
+  const { invoiceId, amount } = p.refund;
+  // A reason first given at confirmation time still lands on the refund record.
+  const reason = p.refund.reason !== 'not_stated' ? p.refund.reason : a.reason_detail ? `customer: ${a.reason_detail}` : 'not_stated';
+  // ---- commit point: after this line the money has moved; aborts and retries must not redo it.
+  const res = await ctx.ledger.commit({ key: `${ctx.sessionId}:${invoiceId}`, sessionId: ctx.sessionId, customerId: cust.id, invoiceId, amount, refundId: id('RF') });
+  if (res.created) ctx.facts.refunds.push({ id: res.refundId, invoiceId, amount: res.amount, reason, at: ctx.now });
+  ctx.facts.pendingAction = null;
+  ctx.turn.refundCommitted = true;
+  return {
+    status: 'ok',
+    summary: `${res.created ? 'Refunded' : 'Already refunded'} $${res.amount.toFixed(2)} on ${invoiceId} (${res.refundId})`,
+    data: { refunded: true, refund_id: res.refundId, invoice_id: invoiceId, amount_usd: res.amount, policy_rule: d.rule, arrives: 'original payment method in 5-10 business days', idempotent_replay: !res.created },
+  };
+}
 
-async function updateAccountField(raw: unknown, ctx: ToolContext): Promise<ToolOutcome> {
-  const a = UpdateArgs.parse(raw);
+const ProposeArgs = z.object({ field: z.string().trim(), value: z.string().trim().min(1).max(200) });
+const ApplyArgs = z.object({ proposal_id: z.string().trim().toUpperCase() });
+
+async function proposeAccountUpdate(raw: unknown, ctx: ToolContext): Promise<ToolOutcome> {
+  const a = ProposeArgs.parse(raw);
   const cust = ctx.facts.customer;
   if (!cust) return { status: 'blocked', summary: 'Not verified', data: { error: 'customer_not_verified' } };
   if (!(UPDATABLE_FIELDS as readonly string[]).includes(a.field)) {
@@ -328,8 +390,27 @@ async function updateAccountField(raw: unknown, ctx: ToolContext): Promise<ToolO
   if (a.field === 'notification_preference' && !['email', 'sms', 'none'].includes(a.value)) return { status: 'blocked', summary: 'Invalid preference', data: { updated: false, error: 'invalid_value', allowed: ['email', 'sms', 'none'] } };
   const rec = ctx.customers.get(cust.id)!;
   const from = (overlay(rec, ctx.facts, ctx.now).account as Record<string, string>)[a.field] ?? '';
-  ctx.facts.updatedFields.push({ field: a.field, from, to: a.value, at: ctx.now });
-  return { status: 'ok', summary: `Updated ${a.field}`, data: { updated: true, field: a.field, from, to: a.value } };
+  const proposal: PendingAction = {
+    id: id('P'), kind: 'account_update', summary: `Change ${a.field.replace(/_/g, ' ')} from "${from}" to "${a.value}"`,
+    createdTurnId: ctx.turnId, createdAt: ctx.now, update: { field: a.field, from, to: a.value },
+  };
+  ctx.facts.pendingAction = proposal;
+  return {
+    status: 'ok',
+    summary: `Proposal ${proposal.id}: ${a.field} → awaiting customer confirmation`,
+    data: { proposal_id: proposal.id, field: a.field, from, to: a.value, next_step: 'Read the change back to the customer and ask them to confirm. Do NOT apply it in this turn.' },
+  };
+}
+
+async function updateAccountField(raw: unknown, ctx: ToolContext): Promise<ToolOutcome> {
+  const a = ApplyArgs.parse(raw);
+  const p = ctx.facts.pendingAction;
+  if (!ctx.facts.customer || !p?.update || p.id !== a.proposal_id || !confirmable(ctx, 'account_update')) {
+    return { status: 'blocked', summary: 'No confirmed account change', data: { updated: false, error: 'not_confirmed' } };
+  }
+  ctx.facts.updatedFields.push({ ...p.update, at: ctx.now });
+  ctx.facts.pendingAction = null;
+  return { status: 'ok', summary: `Updated ${p.update.field}`, data: { updated: true, ...p.update } };
 }
 
 const TicketArgs = z.object({
@@ -367,7 +448,9 @@ export async function createTicket(raw: unknown, ctx: ToolContext): Promise<Tool
 const IMPL: Record<ToolName, (raw: unknown, ctx: ToolContext) => Promise<ToolOutcome>> = {
   verify_customer: verifyCustomer,
   search_policies: searchPolicies,
+  quote_refund: quoteRefund,
   issue_refund: issueRefund,
+  propose_account_update: proposeAccountUpdate,
   update_account_field: updateAccountField,
   create_escalation_ticket: createTicket,
 };

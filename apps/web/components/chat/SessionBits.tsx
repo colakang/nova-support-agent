@@ -1,8 +1,8 @@
 'use client';
-import { Coins, Headset, Shield, ShieldCheck, Sparkles, Ticket as TicketIcon } from 'lucide-react';
+import { Check, Coins, Headset, Hourglass, Shield, ShieldCheck, Sparkles, Ticket as TicketIcon, X } from 'lucide-react';
 import type { SessionView } from '@sa/shared';
 import { fmtMoney, humanize } from '@/lib/format';
-import { Badge, cx } from '@/components/ui/primitives';
+import { Badge, buttonClasses, cx } from '@/components/ui/primitives';
 import { NovaAvatar } from './MessageBubble';
 
 const CONTRACT_TONE = { active: 'ok', trial: 'info', past_due: 'warn', cancelled: 'bad' } as const;
@@ -61,6 +61,41 @@ export function EscalationBanner({ session }: { session: SessionView | null }) {
             {t ? `${humanize(t.reason)} · ${humanize(t.priority)} priority. ` : ''}A human will follow up by email. You can keep chatting with Nova meanwhile.
           </p>
         </div>
+      </div>
+    </div>
+  );
+}
+
+export const CONFIRM_TEXT = 'Yes, please go ahead.';
+export const CANCEL_TEXT = 'No, cancel that.';
+
+/** Irreversible actions are two-phase: the agent prepares them, the customer confirms in a separate
+ *  message. The buttons just send that message; the server still decides whether it counts as a yes. */
+export function PendingActionBar({ session, busy, voice, onConfirm, onCancel }: {
+  session: SessionView | null; busy: boolean; voice: boolean; onConfirm: () => void; onCancel: () => void;
+}) {
+  const p = session?.facts.pendingAction;
+  if (!p) return null;
+  return (
+    <div className="px-3 pt-2 sm:px-6">
+      <div role="status" aria-live="polite" className="mx-auto flex max-w-3xl flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-warn/40 bg-warn-soft px-3 py-2">
+        <Hourglass aria-hidden className="size-4 shrink-0 text-warn-ink" />
+        <div className="min-w-0 flex-1 text-[13px]">
+          <p className="font-semibold text-warn-ink">Waiting for your confirmation</p>
+          <p className="truncate text-xs text-fg-2" title={p.summary}>{p.summary}</p>
+        </div>
+        {voice ? (
+          <span className="text-xs text-muted">Say “yes” to confirm or “no” to cancel</span>
+        ) : (
+          <div className="flex items-center gap-2">
+            <button type="button" className={buttonClasses.secondary} disabled={busy} onClick={onCancel}>
+              <X aria-hidden className="size-3.5" /> Cancel
+            </button>
+            <button type="button" className={buttonClasses.primary} disabled={busy} onClick={onConfirm}>
+              <Check aria-hidden className="size-3.5" /> Confirm
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

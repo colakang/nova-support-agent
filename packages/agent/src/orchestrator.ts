@@ -10,10 +10,10 @@
 //     enforced by code: the model is told, and validation refuses to release until a ticket exists
 import { z } from 'zod';
 import type { AgentEvent, AgentEventInput, ChatMessage, Mode, SessionFacts, SessionState, TurnTrace } from '@sa/shared';
-import { redactPins } from '@sa/shared';
+import { classifyConfirmation, redactPins } from '@sa/shared';
 import { RetrievalUnavailableError, type Retriever } from '@sa/rag';
 import {
-  type CustomerDirectory, FRUSTRATION_ESCALATE_AT, LEGAL_RE, MAX_VERIFY_FAILURES, type RefundLedger, TOOL_LABELS, TOOL_SPECS,
+  type CustomerDirectory, FRUSTRATION_ESCALATE_AT, LEGAL_RE, MAX_VERIFY_FAILURES, PENDING_ACTION_TTL_MS, type RefundLedger, TOOL_LABELS, TOOL_SPECS,
   type ToolContext, ToolFailure, type ToolName, type ToolOutcome, availableTools, executeTool, newTurnState,
 } from '@sa/tools';
 import { type ChaosOnce, type FunctionTool, type InputItem, LlmError, type ServiceTier, callLlm } from './llm';
@@ -104,7 +104,8 @@ function outcomeOf(kind: RespondArgs['kind'] | null, turn: ReturnType<typeof new
   if (turn.refundCommitted) return 'refund_issued';
   if (turn.ticketCreated) return 'escalated';
   if (turn.toolLog.some((t) => t.name === 'update_account_field' && t.status === 'ok')) return 'field_updated';
-  if (turn.toolLog.some((t) => t.name === 'issue_refund' && t.status === 'blocked')) return 'refund_blocked';
+  if (turn.toolLog.some((t) => (t.name === 'quote_refund' || t.name === 'issue_refund') && t.status === 'blocked')) return 'refund_blocked';
+  if (facts.pendingAction) return 'awaiting_confirmation';
   if (kind === 'decline') return 'declined';
   if (kind === 'clarify' && !facts.customer) return 'needs_verification';
   if (kind === 'grounded' || kind === 'account') return 'answered';
@@ -143,9 +144,29 @@ export async function runTurn(req: TurnRequest, deps: AgentDeps): Promise<TurnRe
   const consultedDocs = new Set(facts.consultedDocs);
   const turn = newTurnState();
   const chaosOnce: ChaosOnce = { llmTimeout: session.chaos.llmTimeout, llmRateLimit: session.chaos.llmRateLimit, used: false };
+
+  // ---- two-phase commit: is this message the customer's explicit yes/no to a pending action?
+  // Decided by code (it unlocks moving money), never by the model.
+  let confirmation: ToolContext['confirmation'] = 'none';
+  const pending = facts.pendingAction;
+  if (pending) {
+    if (Date.now() - pending.createdAt > PENDING_ACTION_TTL_MS) {
+      facts.pendingAction = null;
+      emit({ type: 'guardrail', check: 'tool_policy', decision: 'warn', detail: `Pending ${pending.kind} ${pending.id} expired unconfirmed` });
+    } else {
+      confirmation = classifyConfirmation(req.text);
+      if (confirmation === 'decline') facts.pendingAction = null;
+      emit({
+        type: 'guardrail', check: 'tool_policy', decision: confirmation === 'affirm' ? 'pass' : 'warn',
+        detail: confirmation === 'affirm' ? `Customer confirmed ${pending.id}: ${pending.summary}` : confirmation === 'decline' ? `Customer declined ${pending.id}; nothing executed` : `${pending.id} still awaiting an explicit yes; execution stays locked`,
+      });
+    }
+  }
+
   const ctx: ToolContext = {
     sessionId: req.sessionId, facts, consultedDocs, turn, retriever: deps.retriever, customers: deps.customers,
     ledger: deps.ledger, chaos: session.chaos, now: Date.now(), ...(req.signal ? { signal: req.signal } : {}),
+    turnId, confirmation,
   };
   const saveFacts = async () => {
     facts.consultedDocs = [...consultedDocs];
@@ -172,7 +193,7 @@ export async function runTurn(req: TurnRequest, deps: AgentDeps): Promise<TurnRe
   const history = session.messages.filter((m) => m.turnId !== turnId).slice(-cfg.historyMessages);
   if (history.at(-1)?.role === 'user' && history.at(-1)!.content.trim() === userMsg.content.trim()) history.pop();
   const input: InputItem[] = [
-    { role: 'developer', content: sessionContext({ facts, state, mode: req.mode, now: ctx.now, forced }) },
+    { role: 'developer', content: sessionContext({ facts, state, mode: req.mode, now: ctx.now, forced, confirmation, declined: pending && confirmation === 'decline' ? pending.summary : null }) },
     ...history.map((m) => ({ role: m.role, content: m.interrupted ? `${m.content} [cut off: customer interrupted]` : m.content }) as InputItem),
     { role: 'user', content: req.text },
   ];
@@ -293,7 +314,7 @@ export async function runTurn(req: TurnRequest, deps: AgentDeps): Promise<TurnRe
 
     for (let step = 0; step < cfg.maxSteps && !final; step++) {
       if (req.signal?.aborted) throw new LlmError('aborted', 'aborted', 0);
-      const names = availableTools({ facts, consultedDocs });
+      const names = availableTools({ facts, consultedDocs, turnId, confirmation, now: ctx.now });
       const tools: FunctionTool[] = [
         ...names.map((n) => ({ type: 'function' as const, name: n, description: TOOL_SPECS[n].description, parameters: TOOL_SPECS[n].parameters, strict: true })),
         RESPOND_TOOL,
@@ -380,7 +401,7 @@ export async function runTurn(req: TurnRequest, deps: AgentDeps): Promise<TurnRe
         const name = call.name as ToolName;
         if (!(names as string[]).includes(name)) {
           emit({ type: 'guardrail', check: 'tool_policy', decision: 'fail', detail: `${name} is not available in this state` });
-          input.push({ type: 'function_call_output', call_id: call.callId, output: JSON.stringify({ error: 'tool_not_available', available: names, hint: name === 'issue_refund' ? (facts.customer ? 'search the refund policy first' : 'verify the customer first') : undefined }) });
+          input.push({ type: 'function_call_output', call_id: call.callId, output: JSON.stringify({ error: 'tool_not_available', available: names, hint: name === 'issue_refund' || name === 'update_account_field' ? 'This executes only after quote_refund / propose_account_update in an EARLIER turn and the customer\'s explicit yes in their latest message. Present the quote and ask them to confirm.' : name === 'quote_refund' ? (facts.customer ? 'search the refund policy first' : 'verify the customer first') : undefined }) });
           continue;
         }
         const out = await runTool(name, parsed);

@@ -116,6 +116,19 @@ export type RefundRecord = z.infer<typeof RefundRecord>;
 export const SessionState = z.enum(['active', 'escalated']);
 export type SessionState = z.infer<typeof SessionState>;
 
+/** An irreversible action the agent has prepared and the customer has not confirmed yet (two-phase commit). */
+export const PendingAction = z.object({
+  id: z.string(),
+  kind: z.enum(['refund', 'account_update']),
+  /** One line shown to the customer and in the UI confirm bar, e.g. "Refund $79.00 for INV-1042". */
+  summary: z.string(),
+  createdTurnId: z.string(),
+  createdAt: z.number(),
+  refund: z.object({ invoiceId: z.string(), amount: z.number(), reason: z.string(), reasonDetail: z.string(), rule: z.string() }).optional(),
+  update: z.object({ field: z.string(), from: z.string(), to: z.string() }).optional(),
+});
+export type PendingAction = z.infer<typeof PendingAction>;
+
 /** Durable per-session facts. Same object regardless of text or voice. */
 export const SessionFacts = z.object({
   customer: CustomerView.nullable(),
@@ -126,6 +139,8 @@ export const SessionFacts = z.object({
   updatedFields: z.array(z.object({ field: z.string(), from: z.string(), to: z.string(), at: z.number() })),
   /** Policy docs consulted this session (refunds require the refund policy to have been read). */
   consultedDocs: z.array(z.string()),
+  /** Set by quote_refund / propose_account_update; executed only after an explicit confirmation. */
+  pendingAction: PendingAction.nullable(),
 });
 export type SessionFacts = z.infer<typeof SessionFacts>;
 
@@ -137,6 +152,7 @@ export const emptyFacts = (): SessionFacts => ({
   tickets: [],
   updatedFields: [],
   consultedDocs: [],
+  pendingAction: null,
 });
 
 export const ChaosFlags = z.object({
@@ -159,3 +175,21 @@ export type SessionView = z.infer<typeof SessionView>;
 
 /** "PIN 4821" → "PIN ••••". Applied to everything we persist or trace; the model sees the raw turn once. */
 export const redactPins = (s: string) => s.replace(/(\bpin\b\D{0,12})(\d{4})\b/gi, '$1••••');
+
+/**
+ * Is the customer's message an explicit yes/no to a pending action? Decided by code, not the model,
+ * because it unlocks moving money. Conservative: anything ambiguous is "none" (the agent asks again).
+ */
+export function classifyConfirmation(text: string): 'affirm' | 'decline' | 'none' {
+  const t = text.trim().toLowerCase();
+  // Role markers mean someone is scripting the conversation, not answering a question.
+  if (/\b(system|assistant|developer|tool)\s*:/.test(t)) return 'none';
+  const negation = /\b(no|nope|nah|don'?t|do not|cancel|stop|wait|hold on|never ?mind|not now|not yet|changed my mind)\b|不要|取消|算了|等等/;
+  const startsNo = /^(?:(?:no|nope|nah|don'?t|do not|cancel|stop|wait|hold on|never ?mind)\b|不要|取消|算了|不)/;
+  if (startsNo.test(t)) return 'decline';
+  const startsYes = /^(?:(?:yes|yeah|yep|yup|sure|ok|okay|confirm(?:ed)?|correct|that'?s (?:right|correct)|go ahead|please (?:do|proceed|go ahead)|do it|proceed|absolutely|of course|sounds good)\b|好|是|确认|可以|行)/;
+  // First-person only: "the customer has confirmed" must not count as the customer confirming.
+  const confirmPhrase = /\b(go ahead|please proceed|i confirm|yes,? please|please do it|process it)\b/;
+  if ((startsYes.test(t) || confirmPhrase.test(t)) && !negation.test(t)) return 'affirm';
+  return 'none';
+}

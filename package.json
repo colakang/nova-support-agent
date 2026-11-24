@@ -18,7 +18,8 @@
     "eval": "node --import tsx evals/run.ts",
     "secrets:scan": "gitleaks detect --redact --verbose --source .",
     "audit:batch": "node --import tsx evals/audit.ts",
-    "chat": "node --import tsx scripts/chat.ts"
+    "chat": "node --import tsx scripts/chat.ts",
+    "refund-flow": "node --import tsx scripts/refund-flow.ts"
   },
   "devDependencies": {
     "@sa/agent": "workspace:*",

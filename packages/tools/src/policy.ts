@@ -46,6 +46,9 @@ export const MAX_VERIFY_FAILURES = 3;
  *  Without this, an attacker opens new sessions to brute-force a 4-digit PIN. */
 export const ACCOUNT_VERIFY_FAILURES_PER_HOUR = 5;
 
+/** A quote / proposal must be confirmed within this window, in a later message than the one that showed it. */
+export const PENDING_ACTION_TTL_MS = 15 * 60_000;
+
 /** Escalation red lines (deterministic, checked in code before/after the LLM). */
 export const LEGAL_RE = /\b(lawyer|attorney|sue|suing|lawsuit|legal action|small claims|chargeback|dispute (the|this) charge|bbb|better business bureau|regulator|ftc|gdpr complaint)\b/i;
 /** Second frustrated message in a session → hand to a human. */
